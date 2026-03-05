@@ -1,0 +1,70 @@
+import os
+from dataclasses import dataclass
+
+
+def _to_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@dataclass(frozen=True)
+class Settings:
+    mcp_transport: str
+    github_timeout_seconds: int
+    terraform_allowed_roots: list[str]
+    terraform_allow_unrestricted: bool
+    aws_default_cost_days: int
+    aws_max_pages: int
+    github_max_pages: int
+
+
+def load_settings() -> Settings:
+    transport = os.getenv("MCP_TRANSPORT", "stdio").strip().lower() or "stdio"
+    if transport not in {"stdio", "sse"}:
+        transport = "stdio"
+
+    timeout_raw = os.getenv("GITHUB_REQUEST_TIMEOUT_SECONDS", "15").strip()
+    try:
+        github_timeout = max(5, min(120, int(timeout_raw)))
+    except ValueError:
+        github_timeout = 15
+
+    allow_unrestricted = _to_bool(os.getenv("TERRAFORM_ALLOW_UNRESTRICTED"), default=False)
+    roots_raw = os.getenv("TERRAFORM_ALLOWED_ROOTS", "").strip()
+    roots = [
+        os.path.realpath(os.path.abspath(path.strip()))
+        for path in roots_raw.split(",")
+        if path.strip()
+    ]
+
+    cost_days_raw = os.getenv("AWS_DEFAULT_COST_DAYS", "30").strip()
+    try:
+        aws_default_cost_days = max(1, min(365, int(cost_days_raw)))
+    except ValueError:
+        aws_default_cost_days = 30
+
+    aws_pages_raw = os.getenv("AWS_MAX_PAGES", "50").strip()
+    try:
+        aws_max_pages = max(1, min(500, int(aws_pages_raw)))
+    except ValueError:
+        aws_max_pages = 50
+
+    gh_pages_raw = os.getenv("GITHUB_MAX_PAGES", "20").strip()
+    try:
+        github_max_pages = max(1, min(100, int(gh_pages_raw)))
+    except ValueError:
+        github_max_pages = 20
+
+    return Settings(
+        mcp_transport=transport,
+        github_timeout_seconds=github_timeout,
+        terraform_allowed_roots=roots,
+        terraform_allow_unrestricted=allow_unrestricted,
+        aws_default_cost_days=aws_default_cost_days,
+        aws_max_pages=aws_max_pages,
+        github_max_pages=github_max_pages,
+    )
+
+
+settings = load_settings()

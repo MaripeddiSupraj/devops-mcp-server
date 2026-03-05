@@ -1,8 +1,10 @@
 import os
 import requests
+from app.config import settings
 from app.utils.logger import logger
 
-GITHUB_REQUEST_TIMEOUT_SECONDS = 15
+GITHUB_REQUEST_TIMEOUT_SECONDS = settings.github_timeout_seconds
+GITHUB_PER_PAGE = 100
 
 def get_github_headers() -> dict:
     """Helper to build GitHub API headers."""
@@ -27,7 +29,7 @@ def get_github_pipeline_status(owner: str, repo: str) -> dict:
         response = requests.get(
             url,
             headers=get_github_headers(),
-            params={"per_page": 10},
+            params={"per_page": 10, "page": 1},
             timeout=GITHUB_REQUEST_TIMEOUT_SECONDS
         )
         response.raise_for_status()
@@ -65,16 +67,23 @@ def get_github_failed_jobs(owner: str, repo: str, run_id: int) -> dict:
     url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
     
     try:
-        response = requests.get(
-            url,
-            headers=get_github_headers(),
-            timeout=GITHUB_REQUEST_TIMEOUT_SECONDS
-        )
-        response.raise_for_status()
-        data = response.json()
-        
+        all_jobs = []
+        for page in range(1, settings.github_max_pages + 1):
+            response = requests.get(
+                url,
+                headers=get_github_headers(),
+                params={"per_page": GITHUB_PER_PAGE, "page": page},
+                timeout=GITHUB_REQUEST_TIMEOUT_SECONDS
+            )
+            response.raise_for_status()
+            data = response.json()
+            jobs = data.get("jobs", [])
+            all_jobs.extend(jobs)
+            if len(jobs) < GITHUB_PER_PAGE:
+                break
+
         failed_jobs = []
-        for job in data.get("jobs", []):
+        for job in all_jobs:
             if job.get("conclusion") == "failure":
                 # Find the specific steps that failed within the job
                 failed_steps = [
@@ -93,7 +102,8 @@ def get_github_failed_jobs(owner: str, repo: str, run_id: int) -> dict:
             "status": "success", 
             "repository": f"{owner}/{repo}", 
             "run_id": run_id, 
-            "failed_jobs": failed_jobs
+            "failed_jobs": failed_jobs,
+            "jobs_scanned": len(all_jobs)
         }
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch GitHub jobs: {e}")

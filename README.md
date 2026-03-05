@@ -88,3 +88,9 @@ The server automatically detects it is running inside Kubernetes and will switch
 ## 🔒 Security Posture
 This server executes infrastructure commands. It uses **Subprocess Command Arrays** to prevent bash injection and relies completely on the underlying IAM and RBAC rules assigned to its executing environment. 
 **Never run this server with cluster-admin or AWS AdministratorAccess.**
+
+### Required Runtime Safety Settings
+- `TERRAFORM_ALLOWED_ROOTS`: Comma-separated Terraform directories the MCP server may access (recommended: required in production).
+- `TERRAFORM_ALLOW_UNRESTRICTED`: Defaults to `false`. Only set `true` for trusted local development.
+- `AWS_MAX_PAGES`: Upper bound for paginated AWS scans (default `50`).
+- `GITHUB_MAX_PAGES`: Upper bound for paginated GitHub job scans (default `20`).

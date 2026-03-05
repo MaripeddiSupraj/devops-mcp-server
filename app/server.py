@@ -1,5 +1,6 @@
 import os
 from mcp.server.fastmcp import FastMCP
+from app.config import settings
 
 from app.tools.kubernetes_tools import (
     get_pods,
@@ -154,9 +155,8 @@ def list_ecs_clusters(region: str) -> dict:
 
 
 if __name__ == "__main__":
-    # Check if SSE transport was requested (e.g., when running in Kubernetes)
-    # Default is stdio for local use with editors like Cursor/Windsurf
-    transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
+    # Transport is normalized/validated in settings.
+    transport = settings.mcp_transport
     
     logger.info(f"Starting FastMCP DevOps Server with transport: {transport}")
     

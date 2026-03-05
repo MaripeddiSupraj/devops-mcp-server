@@ -1,8 +1,7 @@
 import asyncio
-from mcp.server.fastmcp import FastMCP
 from app.server import mcp
 
-async def test_server():
+async def smoke_test_server():
     print("Testing MCP tools initialization...")
     print(f"Loaded Server Name: {mcp.name}")
     
@@ -16,4 +15,4 @@ async def test_server():
     print("\nInitialization successful.")
 
 if __name__ == "__main__":
-    asyncio.run(test_server())
+    asyncio.run(smoke_test_server())

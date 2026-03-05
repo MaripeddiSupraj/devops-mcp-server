@@ -1,5 +1,6 @@
 from app.utils.logger import logger
 from app.utils.shell import run_command
+from app.config import settings
 import os
 
 def _validate_directory(directory: str) -> str | None:
@@ -10,15 +11,10 @@ def _validate_directory(directory: str) -> str | None:
     if not os.path.isdir(resolved):
         return None
 
-    allowed_roots_env = os.getenv("TERRAFORM_ALLOWED_ROOTS", "").strip()
-    if not allowed_roots_env:
+    if settings.terraform_allow_unrestricted:
         return resolved
 
-    allowed_roots = [
-        os.path.realpath(os.path.abspath(path.strip()))
-        for path in allowed_roots_env.split(",")
-        if path.strip()
-    ]
+    allowed_roots = settings.terraform_allowed_roots
     if not allowed_roots:
         return None
 
