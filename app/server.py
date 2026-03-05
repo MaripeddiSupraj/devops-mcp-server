@@ -129,7 +129,7 @@ def run_terraform_apply(directory: str, auto_approve: bool = False) -> dict:
 # ==========================================
 
 @mcp.tool()
-def estimate_cost(service: str, start_date: str = None, end_date: str = None) -> dict:
+def estimate_cost(service: str = "all", start_date: str = None, end_date: str = None) -> dict:
     """Estimate AWS cost for a specific service. Dates (YYYY-MM-DD) default to 30 days."""
     logger.info(f"MCP Tool Call: estimate_cost(service={service})")
     return estimate_aws_cost(service, start_date, end_date)

@@ -3,7 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def run_command(cmd: list[str], cwd: str = None) -> str:
+def run_command(cmd: list[str], cwd: str = None, timeout_seconds: int = 120) -> str:
     """
     Run a shell command safely using subprocess.
     Returns the stdout if successful, raises an Exception on failure.
@@ -15,9 +15,13 @@ def run_command(cmd: list[str], cwd: str = None) -> str:
             cwd=cwd,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            timeout=timeout_seconds
         )
         return result.stdout.strip()
+    except subprocess.TimeoutExpired as e:
+        logger.error(f"Command timed out after {timeout_seconds}s")
+        raise RuntimeError(f"Command timed out after {timeout_seconds}s: {' '.join(cmd)}") from e
     except subprocess.CalledProcessError as e:
         logger.error(f"Command failed with exit code {e.returncode}")
         logger.error(f"Stdout: {e.stdout}")

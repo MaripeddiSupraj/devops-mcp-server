@@ -2,6 +2,8 @@ import os
 import requests
 from app.utils.logger import logger
 
+GITHUB_REQUEST_TIMEOUT_SECONDS = 15
+
 def get_github_headers() -> dict:
     """Helper to build GitHub API headers."""
     headers = {
@@ -22,7 +24,12 @@ def get_github_pipeline_status(owner: str, repo: str) -> dict:
     url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs"
     
     try:
-        response = requests.get(url, headers=get_github_headers(), params={"per_page": 10})
+        response = requests.get(
+            url,
+            headers=get_github_headers(),
+            params={"per_page": 10},
+            timeout=GITHUB_REQUEST_TIMEOUT_SECONDS
+        )
         response.raise_for_status()
         data = response.json()
         
@@ -58,7 +65,11 @@ def get_github_failed_jobs(owner: str, repo: str, run_id: int) -> dict:
     url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
     
     try:
-        response = requests.get(url, headers=get_github_headers())
+        response = requests.get(
+            url,
+            headers=get_github_headers(),
+            timeout=GITHUB_REQUEST_TIMEOUT_SECONDS
+        )
         response.raise_for_status()
         data = response.json()
         
