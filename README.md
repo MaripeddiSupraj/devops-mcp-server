@@ -94,3 +94,14 @@ This server executes infrastructure commands. It uses **Subprocess Command Array
 - `TERRAFORM_ALLOW_UNRESTRICTED`: Defaults to `false`. Only set `true` for trusted local development.
 - `AWS_MAX_PAGES`: Upper bound for paginated AWS scans (default `50`).
 - `GITHUB_MAX_PAGES`: Upper bound for paginated GitHub job scans (default `20`).
+
+### Optional SSE/HTTP Auth Settings
+- `MCP_AUTH_ENABLED`: Enable bearer-token auth for SSE/HTTP transports (`false` by default).
+- `MCP_AUTH_TOKENS`: Comma-separated static bearer tokens accepted by the server.
+- `MCP_AUTH_ISSUER_URL`: OAuth issuer URL metadata value (default `http://localhost:8000`).
+- `MCP_AUTH_RESOURCE_SERVER_URL`: Resource-server URL metadata value (default `http://localhost:8000`).
+- `MCP_AUTH_REQUIRED_SCOPES`: Optional comma-separated scopes to attach to verified tokens.
+
+### Audit Logging
+- `MCP_AUDIT_ENABLED`: Defaults to `true`.
+- `terraform apply` attempts/rejections/success/errors are logged as structured `AUDIT` log lines.

@@ -1,5 +1,6 @@
 from app.utils.logger import logger
 from app.utils.shell import run_command
+from app.utils.audit import audit_event
 from app.config import settings
 import os
 
@@ -143,8 +144,18 @@ def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
     DANGEROUS: If auto_approve is True, it will apply without requiring a human to type 'yes'.
     """
     logger.info(f"Running terraform apply (auto_approve={auto_approve}) in: {directory}")
+    audit_event(
+        action="terraform_apply",
+        status="attempted",
+        details={"directory": directory, "auto_approve": auto_approve},
+    )
     safe_directory = _validate_directory(directory)
     if not safe_directory:
+        audit_event(
+            action="terraform_apply",
+            status="rejected",
+            details={"directory": directory, "reason": "invalid_directory"},
+        )
         return {
             "status": "error",
             "message": (
@@ -154,6 +165,11 @@ def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
         }
 
     if not auto_approve:
+        audit_event(
+            action="terraform_apply",
+            status="rejected",
+            details={"directory": safe_directory, "reason": "interactive_not_supported"},
+        )
         return {
             "status": "error",
             "message": (
@@ -168,7 +184,17 @@ def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
         cmd = ["terraform", "apply", "-no-color", "-input=false", "-auto-approve"]
             
         output = run_command(cmd, cwd=safe_directory)
+        audit_event(
+            action="terraform_apply",
+            status="success",
+            details={"directory": safe_directory, "auto_approve": True},
+        )
         return {"status": "success", "output": output}
     except Exception as e:
         logger.error(f"Terraform apply failed: {e}")
+        audit_event(
+            action="terraform_apply",
+            status="error",
+            details={"directory": safe_directory, "error": str(e)},
+        )
         return {"status": "error", "message": str(e)}

@@ -17,6 +17,12 @@ class Settings:
     aws_default_cost_days: int
     aws_max_pages: int
     github_max_pages: int
+    auth_enabled: bool
+    auth_issuer_url: str
+    auth_resource_server_url: str
+    auth_required_scopes: list[str]
+    auth_tokens: list[str]
+    audit_enabled: bool
 
 
 def load_settings() -> Settings:
@@ -56,6 +62,15 @@ def load_settings() -> Settings:
     except ValueError:
         github_max_pages = 20
 
+    auth_enabled = _to_bool(os.getenv("MCP_AUTH_ENABLED"), default=False)
+    auth_issuer_url = os.getenv("MCP_AUTH_ISSUER_URL", "http://localhost:8000").strip()
+    auth_resource_server_url = os.getenv("MCP_AUTH_RESOURCE_SERVER_URL", "http://localhost:8000").strip()
+    scopes_raw = os.getenv("MCP_AUTH_REQUIRED_SCOPES", "").strip()
+    auth_required_scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()]
+    auth_tokens_raw = os.getenv("MCP_AUTH_TOKENS", "").strip()
+    auth_tokens = [t.strip() for t in auth_tokens_raw.split(",") if t.strip()]
+    audit_enabled = _to_bool(os.getenv("MCP_AUDIT_ENABLED"), default=True)
+
     return Settings(
         mcp_transport=transport,
         github_timeout_seconds=github_timeout,
@@ -64,6 +79,12 @@ def load_settings() -> Settings:
         aws_default_cost_days=aws_default_cost_days,
         aws_max_pages=aws_max_pages,
         github_max_pages=github_max_pages,
+        auth_enabled=auth_enabled,
+        auth_issuer_url=auth_issuer_url,
+        auth_resource_server_url=auth_resource_server_url,
+        auth_required_scopes=auth_required_scopes,
+        auth_tokens=auth_tokens,
+        audit_enabled=audit_enabled,
     )
 
 

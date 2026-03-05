@@ -60,6 +60,12 @@ spec:
         env:
         - name: MCP_TRANSPORT
           value: "sse"
+        - name: MCP_AUTH_ENABLED
+          value: "false"
+        # Example token list for static bearer auth when enabled.
+        # Use secret refs in production instead of plain text env vars.
+        - name: MCP_AUTH_TOKENS
+          value: ""
         - name: TERRAFORM_ALLOW_UNRESTRICTED
           value: "false"
         # Update to one or more comma-separated safe IaC roots in your runtime.

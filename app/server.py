@@ -1,6 +1,8 @@
 import os
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.settings import AuthSettings
 from app.config import settings
+from app.auth import StaticTokenVerifier
 
 from app.tools.kubernetes_tools import (
     get_pods,
@@ -29,8 +31,27 @@ from app.tools.cicd_tools import (
 )
 from app.utils.logger import logger
 
+def _build_server() -> FastMCP:
+    if settings.auth_enabled:
+        if not settings.auth_tokens:
+            raise ValueError("MCP_AUTH_ENABLED=true but no tokens set in MCP_AUTH_TOKENS")
+
+        auth_settings = AuthSettings(
+            issuer_url=settings.auth_issuer_url,
+            resource_server_url=settings.auth_resource_server_url,
+            required_scopes=settings.auth_required_scopes or None,
+        )
+        token_verifier = StaticTokenVerifier(
+            allowed_tokens=settings.auth_tokens,
+            scopes=settings.auth_required_scopes,
+        )
+        return FastMCP("DevOps MCP Server", auth=auth_settings, token_verifier=token_verifier)
+
+    return FastMCP("DevOps MCP Server")
+
+
 # Initialize FastMCP Server
-mcp = FastMCP("DevOps MCP Server")
+mcp = _build_server()
 
 # ==========================================
 # CI/CD TOOLS
