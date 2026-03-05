@@ -7,7 +7,7 @@ async def test_server():
     print(f"Loaded Server Name: {mcp.name}")
     
     # We can fetch the tools safely
-    tools = await mcp.get_tools()
+    tools = await mcp.list_tools()
     
     print("\nAvailable Tools:")
     for tool in tools:
