@@ -67,6 +67,9 @@ Now that your AI is connected, you don't need to write code. You just talk to it
 **Example: Terraform Auditing**
 > *"I'm working in the `infra/prod` directory. Can you show me the terraform plan? If it looks good, list all the resources currently in the state file."*
 
+**Example: CI/CD Pipeline Checks**
+> *"Did the latest set of GitHub Actions pass for the `MaripeddiSupraj/devops-mcp-server` repository? If it failed, show me exactly which test jobs failed so I can fix them."*
+
 **Example: AWS Discovery**
 > *"I need to know how many EC2 instances we have running in `us-east-1` and what our AWS cost estimate is for the last 30 days."*
 

@@ -24,6 +24,10 @@ This server equips your AI agent with deep introspection capabilities:
 - Fetch generated output endpoints.
 - Execute infrastructure changes (`terraform apply`).
 
+**CI/CD (GitHub Actions)**: Troubleshoot failing builds without switching context.
+- Check latest pipeline statuses (`get_pipeline_status`).
+- Extract exact failing jobs/steps from a run (`get_failed_pipeline_jobs`).
+
 **AWS (`boto3`)**: Discover live cloud assets.
 - Enumerate EC2 instances and IPs.
 - List ECS container clusters and task counts.

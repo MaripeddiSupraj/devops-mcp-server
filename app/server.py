@@ -22,10 +22,30 @@ from app.tools.aws_tools import (
     list_aws_s3_buckets as aws_s3,
     list_aws_ecs_clusters as aws_ecs
 )
+from app.tools.cicd_tools import (
+    get_github_pipeline_status,
+    get_github_failed_jobs
+)
 from app.utils.logger import logger
 
 # Initialize FastMCP Server
 mcp = FastMCP("DevOps MCP Server")
+
+# ==========================================
+# CI/CD TOOLS
+# ==========================================
+
+@mcp.tool()
+def get_pipeline_status(owner: str, repo: str) -> dict:
+    """Get the recent GitHub Actions pipeline runs for a repository."""
+    logger.info(f"MCP Tool Call: get_pipeline_status(owner={owner}, repo={repo})")
+    return get_github_pipeline_status(owner, repo)
+
+@mcp.tool()
+def get_failed_pipeline_jobs(owner: str, repo: str, run_id: int) -> dict:
+    """Get the specifically failed job/steps from a GitHub Actions workflow run."""
+    logger.info(f"MCP Tool Call: get_failed_pipeline_jobs(owner={owner}, repo={repo}, run_id={run_id})")
+    return get_github_failed_jobs(owner, repo, run_id)
 
 # ==========================================
 # KUBERNETES TOOLS
