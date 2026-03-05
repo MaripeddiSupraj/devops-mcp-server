@@ -138,13 +138,28 @@ def run_terraform_output(directory: str) -> dict:
     return tf_output(directory)
 
 @mcp.tool()
-def run_terraform_apply(directory: str, auto_approve: bool = False) -> dict:
+def run_terraform_apply(
+    directory: str,
+    auto_approve: bool = False,
+    approval_reason: str | None = None,
+    approval_requested_at_epoch: int | None = None,
+    approval_token: str | None = None,
+    correlation_id: str | None = None,
+) -> dict:
     """
     Run terraform apply in a specified directory.
-    DANGEROUS: Do not use auto_approve=True unless explicitly authorized.
+    DANGEROUS: Requires explicit authorization.
+    For auto_approve=True, pass approval_reason, approval_requested_at_epoch, and approval_token.
     """
     logger.info(f"MCP Tool Call: run_terraform_apply(directory={directory}, auto_approve={auto_approve})")
-    return tf_apply(directory, auto_approve)
+    return tf_apply(
+        directory=directory,
+        auto_approve=auto_approve,
+        approval_reason=approval_reason,
+        approval_requested_at_epoch=approval_requested_at_epoch,
+        approval_token=approval_token,
+        correlation_id=correlation_id,
+    )
 
 # ==========================================
 # AWS TOOLS

@@ -23,6 +23,9 @@ class Settings:
     auth_required_scopes: list[str]
     auth_tokens: list[str]
     audit_enabled: bool
+    terraform_apply_approval_secret: str
+    terraform_apply_token_ttl_seconds: int
+    terraform_apply_require_approval: bool
 
 
 def load_settings() -> Settings:
@@ -70,6 +73,16 @@ def load_settings() -> Settings:
     auth_tokens_raw = os.getenv("MCP_AUTH_TOKENS", "").strip()
     auth_tokens = [t.strip() for t in auth_tokens_raw.split(",") if t.strip()]
     audit_enabled = _to_bool(os.getenv("MCP_AUDIT_ENABLED"), default=True)
+    terraform_apply_approval_secret = os.getenv("TERRAFORM_APPLY_APPROVAL_SECRET", "").strip()
+    apply_ttl_raw = os.getenv("TERRAFORM_APPLY_TOKEN_TTL_SECONDS", "300").strip()
+    try:
+        terraform_apply_token_ttl_seconds = max(60, min(3600, int(apply_ttl_raw)))
+    except ValueError:
+        terraform_apply_token_ttl_seconds = 300
+    terraform_apply_require_approval = _to_bool(
+        os.getenv("TERRAFORM_APPLY_REQUIRE_APPROVAL"),
+        default=True,
+    )
 
     return Settings(
         mcp_transport=transport,
@@ -85,6 +98,9 @@ def load_settings() -> Settings:
         auth_required_scopes=auth_required_scopes,
         auth_tokens=auth_tokens,
         audit_enabled=audit_enabled,
+        terraform_apply_approval_secret=terraform_apply_approval_secret,
+        terraform_apply_token_ttl_seconds=terraform_apply_token_ttl_seconds,
+        terraform_apply_require_approval=terraform_apply_require_approval,
     )
 
 

@@ -33,6 +33,17 @@ roleRef:
   kind: ClusterRole
   name: devops-mcp-readonly
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: devops-mcp-secrets
+type: Opaque
+stringData:
+  # Comma-separated static bearer tokens for MCP auth.
+  MCP_AUTH_TOKENS: "replace-with-strong-token"
+  # Shared secret used to validate short-lived terraform apply approval tokens.
+  TERRAFORM_APPLY_APPROVAL_SECRET: "replace-with-strong-secret"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,12 +73,22 @@ spec:
           value: "sse"
         - name: MCP_AUTH_ENABLED
           value: "false"
-        # Example token list for static bearer auth when enabled.
-        # Use secret refs in production instead of plain text env vars.
         - name: MCP_AUTH_TOKENS
-          value: ""
+          valueFrom:
+            secretKeyRef:
+              name: devops-mcp-secrets
+              key: MCP_AUTH_TOKENS
         - name: TERRAFORM_ALLOW_UNRESTRICTED
           value: "false"
+        - name: TERRAFORM_APPLY_REQUIRE_APPROVAL
+          value: "true"
+        - name: TERRAFORM_APPLY_TOKEN_TTL_SECONDS
+          value: "300"
+        - name: TERRAFORM_APPLY_APPROVAL_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: devops-mcp-secrets
+              key: TERRAFORM_APPLY_APPROVAL_SECRET
         # Update to one or more comma-separated safe IaC roots in your runtime.
         - name: TERRAFORM_ALLOWED_ROOTS
           value: "/workspace/infra"

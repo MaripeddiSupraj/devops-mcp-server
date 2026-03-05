@@ -1,6 +1,7 @@
 from app.utils.logger import logger
 from app.utils.shell import run_command
 from app.utils.audit import audit_event
+from app.utils.approval import validate_approval_token
 from app.config import settings
 import os
 
@@ -138,7 +139,14 @@ def terraform_output(directory: str) -> dict:
         logger.error(f"Terraform output failed: {e}")
         return {"status": "error", "message": str(e)}
 
-def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
+def terraform_apply(
+    directory: str,
+    auto_approve: bool = False,
+    approval_reason: str | None = None,
+    approval_requested_at_epoch: int | None = None,
+    approval_token: str | None = None,
+    correlation_id: str | None = None,
+) -> dict:
     """
     Run terraform apply in a specified directory.
     DANGEROUS: If auto_approve is True, it will apply without requiring a human to type 'yes'.
@@ -147,14 +155,22 @@ def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
     audit_event(
         action="terraform_apply",
         status="attempted",
-        details={"directory": directory, "auto_approve": auto_approve},
+        details={
+            "directory": directory,
+            "auto_approve": auto_approve,
+            "correlation_id": correlation_id,
+        },
     )
     safe_directory = _validate_directory(directory)
     if not safe_directory:
         audit_event(
             action="terraform_apply",
             status="rejected",
-            details={"directory": directory, "reason": "invalid_directory"},
+            details={
+                "directory": directory,
+                "reason": "invalid_directory",
+                "correlation_id": correlation_id,
+            },
         )
         return {
             "status": "error",
@@ -168,7 +184,11 @@ def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
         audit_event(
             action="terraform_apply",
             status="rejected",
-            details={"directory": safe_directory, "reason": "interactive_not_supported"},
+            details={
+                "directory": safe_directory,
+                "reason": "interactive_not_supported",
+                "correlation_id": correlation_id,
+            },
         )
         return {
             "status": "error",
@@ -177,6 +197,64 @@ def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
                 "Run plan first, then call apply with auto_approve=true only when explicitly authorized."
             )
         }
+
+    if settings.terraform_apply_require_approval:
+        if not settings.terraform_apply_approval_secret:
+            audit_event(
+                action="terraform_apply",
+                status="rejected",
+                details={
+                    "directory": safe_directory,
+                    "reason": "approval_secret_missing",
+                    "correlation_id": correlation_id,
+                },
+            )
+            return {
+                "status": "error",
+                "message": "TERRAFORM_APPLY_APPROVAL_SECRET is required when approval gating is enabled."
+            }
+
+        if not approval_reason or approval_requested_at_epoch is None or not approval_token:
+            audit_event(
+                action="terraform_apply",
+                status="rejected",
+                details={
+                    "directory": safe_directory,
+                    "reason": "approval_fields_missing",
+                    "correlation_id": correlation_id,
+                },
+            )
+            return {
+                "status": "error",
+                "message": (
+                    "approval_reason, approval_requested_at_epoch, and approval_token are required "
+                    "for terraform apply."
+                ),
+            }
+
+        token_is_valid = validate_approval_token(
+            secret=settings.terraform_apply_approval_secret,
+            directory=safe_directory,
+            requested_at_epoch=approval_requested_at_epoch,
+            reason=approval_reason,
+            provided_token=approval_token,
+            ttl_seconds=settings.terraform_apply_token_ttl_seconds,
+        )
+        if not token_is_valid:
+            audit_event(
+                action="terraform_apply",
+                status="rejected",
+                details={
+                    "directory": safe_directory,
+                    "reason": "approval_token_invalid_or_expired",
+                    "approval_requested_at_epoch": approval_requested_at_epoch,
+                    "correlation_id": correlation_id,
+                },
+            )
+            return {
+                "status": "error",
+                "message": "approval_token is invalid or expired for terraform apply.",
+            }
         
     try:
         run_command(["terraform", "init", "-no-color", "-input=false"], cwd=safe_directory)
@@ -187,7 +265,13 @@ def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
         audit_event(
             action="terraform_apply",
             status="success",
-            details={"directory": safe_directory, "auto_approve": True},
+            details={
+                "directory": safe_directory,
+                "auto_approve": True,
+                "approval_reason": approval_reason,
+                "approval_requested_at_epoch": approval_requested_at_epoch,
+                "correlation_id": correlation_id,
+            },
         )
         return {"status": "success", "output": output}
     except Exception as e:
@@ -195,6 +279,10 @@ def terraform_apply(directory: str, auto_approve: bool = False) -> dict:
         audit_event(
             action="terraform_apply",
             status="error",
-            details={"directory": safe_directory, "error": str(e)},
+            details={
+                "directory": safe_directory,
+                "error": str(e),
+                "correlation_id": correlation_id,
+            },
         )
         return {"status": "error", "message": str(e)}

@@ -97,7 +97,7 @@ This server executes infrastructure commands. It uses **Subprocess Command Array
 
 ### Optional SSE/HTTP Auth Settings
 - `MCP_AUTH_ENABLED`: Enable bearer-token auth for SSE/HTTP transports (`false` by default).
-- `MCP_AUTH_TOKENS`: Comma-separated static bearer tokens accepted by the server.
+- `MCP_AUTH_TOKENS`: Comma-separated static bearer tokens accepted by the server. Store this in Kubernetes Secret.
 - `MCP_AUTH_ISSUER_URL`: OAuth issuer URL metadata value (default `http://localhost:8000`).
 - `MCP_AUTH_RESOURCE_SERVER_URL`: Resource-server URL metadata value (default `http://localhost:8000`).
 - `MCP_AUTH_REQUIRED_SCOPES`: Optional comma-separated scopes to attach to verified tokens.
@@ -105,3 +105,13 @@ This server executes infrastructure commands. It uses **Subprocess Command Array
 ### Audit Logging
 - `MCP_AUDIT_ENABLED`: Defaults to `true`.
 - `terraform apply` attempts/rejections/success/errors are logged as structured `AUDIT` log lines.
+
+### Terraform Apply Approval Gate
+- `TERRAFORM_APPLY_REQUIRE_APPROVAL`: Defaults to `true`.
+- `TERRAFORM_APPLY_APPROVAL_SECRET`: Shared secret used to validate approval tokens.
+- `TERRAFORM_APPLY_TOKEN_TTL_SECONDS`: Approval token max age (default `300`).
+- `run_terraform_apply` requires:
+  - `approval_reason`
+  - `approval_requested_at_epoch`
+  - `approval_token`
+  - optional `correlation_id` for audit tracing
