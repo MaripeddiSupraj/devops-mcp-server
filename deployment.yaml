@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-mcp
+  labels:
+    app: devops-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: devops-mcp
+  template:
+    metadata:
+      labels:
+        app: devops-mcp
+    spec:
+      serviceAccountName: default # Ensure this has appropriate roles for AWS/Terraform/K8s
+      containers:
+      - name: mcp
+        image: devops-mcp:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: sse
+        env:
+        - name: MCP_TRANSPORT
+          value: "sse"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: devops-mcp
+spec:
+  selector:
+    app: devops-mcp
+  ports:
+  - port: 80
+    targetPort: 8000
+    name: http
