@@ -10,6 +10,14 @@ Turn your AI into a Senior DevOps Engineer.
 
 ---
 
+## 📘 Documentation
+- Public onboarding: [PUBLIC_USER_GUIDE.md](/Users/maripeddisupraj/Documents/Codex_Work/devops-mcp-server/PUBLIC_USER_GUIDE.md)
+- Usage walkthrough: [USAGE_GUIDE.md](/Users/maripeddisupraj/Documents/Codex_Work/devops-mcp-server/USAGE_GUIDE.md)
+- Developer architecture: [AI_DEVELOPER_GUIDE.md](/Users/maripeddisupraj/Documents/Codex_Work/devops-mcp-server/AI_DEVELOPER_GUIDE.md)
+- Security policy: [SECURITY.md](/Users/maripeddisupraj/Documents/Codex_Work/devops-mcp-server/SECURITY.md)
+
+---
+
 ## 🔥 15 Massive Capabilities
 This server equips your AI agent with deep introspection capabilities:
 
