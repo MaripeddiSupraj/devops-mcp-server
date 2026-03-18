@@ -1,5 +1,5 @@
 from kubernetes import client, config
-from app.utils.logger import logger
+from devops_mcp.utils.logger import logger
 import os
 
 # Initialize kubernetes client once when the module loads

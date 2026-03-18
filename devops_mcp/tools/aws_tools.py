@@ -1,4 +1,4 @@
-from app.utils.logger import logger
+from devops_mcp.utils.logger import logger
 import boto3
 from datetime import datetime, timedelta
 

@@ -3,8 +3,9 @@
 
 [![FastMCP Compatible](https://img.shields.io/badge/FastMCP-✅-blue)]()
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-ffd343.svg)]()
+[![License](https://img.shields.io/badge/License-MIT-green.svg)]()
 
-The **DevOps MCP Server** implements the [Model Context Protocol](https://github.com/jlowin/fastmcp), empowering your AI Assistants (like Cursor, Claude Code, or Windsurf) to securely read, debug, and execute operations across your Kubernetes clusters, AWS environments, and Terraform state. 
+The **DevOps MCP Server** implements the [Model Context Protocol](https://github.com/modelcontextprotocol/spec), empowering your AI Assistants (like Cursor, Claude Desktop, or Windsurf) to securely read, debug, and execute operations across your Kubernetes clusters, AWS environments, and Terraform state. 
 
 Turn your AI into a Senior DevOps Engineer.
 
@@ -13,22 +14,22 @@ Turn your AI into a Senior DevOps Engineer.
 ## 🔥 15 Massive Capabilities
 This server equips your AI agent with deep introspection capabilities:
 
-**Kubernetes (`kubernetes-client`)**: Debug CrashLoopBackOffs instantly.
+**Kubernetes**: Debug CrashLoopBackOffs instantly.
 - List Pods, Deployments, Services, and Ingresses.
 - Fetch raw container logs.
 - View cluster scheduling and networking events.
 
-**Terraform (Subprocess Router)**: Understand infrastructure as code perfectly.
+**Terraform**: Understand infrastructure as code perfectly.
 - Run `terraform plan` safely.
 - Deep inspect state JSON (`terraform show -json`).
 - Fetch generated output endpoints.
 - Execute infrastructure changes (`terraform apply`).
 
 **CI/CD (GitHub Actions)**: Troubleshoot failing builds without switching context.
-- Check latest pipeline statuses (`get_pipeline_status`).
-- Extract exact failing jobs/steps from a run (`get_failed_pipeline_jobs`).
+- Check latest pipeline statuses.
+- Extract exact failing jobs/steps from a run.
 
-**AWS (`boto3`)**: Discover live cloud assets.
+**AWS**: Discover live cloud assets.
 - Enumerate EC2 instances and IPs.
 - List ECS container clusters and task counts.
 - Search S3 Storage buckets.
@@ -36,8 +37,9 @@ This server equips your AI agent with deep introspection capabilities:
 
 ---
 
-## 🚀 Quickstart: Running Locally (For IDEs like Cursor/Windsurf)
-Use this method if you want your local IDE's AI assistant to have access to your local kubeconfig, AWS credentials, and terraform states.
+## 🚀 Quickstart: Local Installation
+
+You no longer need to manually manage virtual environments! You can install the server globally or run it dynamically.
 
 ### Prerequisites
 1. Python 3.11+
@@ -45,25 +47,54 @@ Use this method if you want your local IDE's AI assistant to have access to your
 3. Authenticated AWS credentials (e.g. `aws sso login` or `~/.aws/credentials`).
 4. Authenticated Kubernetes access (`~/.kube/config`).
 
-### Setup
+### Option 1: Using `uvx` (Recommended)
+If you have [`uv`](https://docs.astral.sh/uv/) installed, you can run the server directly without installing it:
 ```bash
-# Clone the repository
-git clone https://github.com/YOUR_ORG/devops-mcp-server.git
-cd devops-mcp-server
+uvx devops-mcp-server
+```
+*(Note: If installing directly from GitHub before PyPI release, use: `uvx --from git+https://github.com/MaripeddiSupraj/devops-mcp-server.git devops-mcp-server`)*
 
-# Create virtual environment and install dependencies
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+### Option 2: Using `pip`
+```bash
+pip install git+https://github.com/MaripeddiSupraj/devops-mcp-server.git
+```
+Then just start the server:
+```bash
+devops-mcp-server
 ```
 
-### Configuring Cursor / Windsurf
+---
+
+## 🤖 IDE Configurations
+
+### Claude Desktop Configuration
+Add this to your `claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "devops-mcp": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/MaripeddiSupraj/devops-mcp-server.git",
+        "devops-mcp-server"
+      ],
+      "env": {
+        "AWS_PROFILE": "default",
+        "KUBECONFIG": "/Users/YOUR_NAME/.kube/config"
+      }
+    }
+  }
+}
+```
+
+### Cursor / Windsurf Configuration
 1. Open your IDE Settings -> MCP Servers.
 2. Click **Add New MCP Server**.
 3. Set the type to `command`.
 4. Name it `DevOps`.
-5. For the command, use: `/absolute/path/to/devops-mcp-server/venv/bin/python /absolute/path/to/devops-mcp-server/app/server.py`.
-6. Ensure your terminal has the necessary AWS/Kube environment variables exported. The MCP server will run in the background as a `stdio` process.
+5. For the command, use: `uvx --from git+https://github.com/MaripeddiSupraj/devops-mcp-server.git devops-mcp-server`
+6. *(If you used pip install, the command is just `devops-mcp-server`)*
 
 ---
 

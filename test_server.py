@@ -1,6 +1,6 @@
 import asyncio
 from mcp.server.fastmcp import FastMCP
-from app.server import mcp
+from devops_mcp.server import mcp
 
 async def test_server():
     print("Testing MCP tools initialization...")

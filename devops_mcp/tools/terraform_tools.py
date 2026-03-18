@@ -1,5 +1,5 @@
-from app.utils.logger import logger
-from app.utils.shell import run_command
+from devops_mcp.utils.logger import logger
+from devops_mcp.utils.shell import run_command
 import os
 import json
 

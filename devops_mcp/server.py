@@ -1,7 +1,7 @@
 import os
 from mcp.server.fastmcp import FastMCP
 
-from app.tools.kubernetes_tools import (
+from devops_mcp.tools.kubernetes_tools import (
     get_kubernetes_pods,
     get_kubernetes_logs,
     get_kubernetes_events,
@@ -9,24 +9,24 @@ from app.tools.kubernetes_tools import (
     get_kubernetes_services,
     get_kubernetes_ingresses
 )
-from app.tools.terraform_tools import (
+from devops_mcp.tools.terraform_tools import (
     run_terraform_plan,
     run_terraform_state_list,
     run_terraform_show,
     run_terraform_output,
     run_terraform_apply
 )
-from app.tools.aws_tools import (
+from devops_mcp.tools.aws_tools import (
     estimate_cost,
     list_ec2_instances,
     list_s3_buckets,
     list_ecs_clusters
 )
-from app.tools.cicd_tools import (
+from devops_mcp.tools.cicd_tools import (
     get_pipeline_status,
     get_failed_pipeline_jobs
 )
-from app.utils.logger import logger
+from devops_mcp.utils.logger import logger
 
 # Initialize FastMCP Server
 mcp = FastMCP("DevOps MCP Server")
@@ -56,7 +56,7 @@ mcp.add_tool(list_ec2_instances)
 mcp.add_tool(list_s3_buckets)
 mcp.add_tool(list_ecs_clusters)
 
-if __name__ == "__main__":
+def main():
     # Check if SSE transport was requested (e.g., when running in Kubernetes)
     # Default is stdio for local use with editors like Cursor/Windsurf
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
@@ -68,3 +68,6 @@ if __name__ == "__main__":
         mcp.run(transport="sse")
     else:
         mcp.run(transport="stdio")
+
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,6 @@
 import os
 import requests
-from app.utils.logger import logger
+from devops_mcp.utils.logger import logger
 
 def get_github_headers() -> dict:
     """Helper to build GitHub API headers."""

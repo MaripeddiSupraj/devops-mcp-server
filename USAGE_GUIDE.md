@@ -14,7 +14,7 @@ The **Model Context Protocol (MCP)** is a standardized way for AI agents to call
 ## 🛠️ Step 1: Prerequisites
 Since this server executes real infrastructure commands on your behalf, the host machine running the server needs the correct software and credentials.
 
-1. **Python**: `3.11` or higher.
+1. **Python**: `3.11` or higher. (Or just use `uv`!)
 2. **Terraform**: The `terraform` CLI binary must be installed and in your system's PATH.
 3. **AWS Credentials**: The server uses standard `boto3`. You must be authenticated locally (e.g., via `aws sso login` or having the `AWS_ACCESS_KEY_ID` environment variables set).
 4. **Kubernetes Credentials**: You must have a valid `~/.kube/config` file with access to your cluster.
@@ -22,42 +22,22 @@ Since this server executes real infrastructure commands on your behalf, the host
 ---
 
 ## 🔌 Step 2: Installation
-Clone the repository and install the dependencies in a virtual environment.
+
+We recommend using [`uv`](https://docs.astral.sh/uv/) to run the server without polluting your global environment. You don't even need to clone the repository!
 
 ```bash
-git clone https://github.com/MaripeddiSupraj/devops-mcp-server.git
-cd devops-mcp-server
+uvx --from git+https://github.com/MaripeddiSupraj/devops-mcp-server.git devops-mcp-server
+```
 
-# Create an isolated python environment
-python -m venv venv
-source venv/bin/activate
-
-# Install the required packages
-pip install -r requirements.txt
+Alternatively, you can install it globally via pip:
+```bash
+pip install git+https://github.com/MaripeddiSupraj/devops-mcp-server.git
+devops-mcp-server
 ```
 
 ---
 
-## 🤖 Step 3: Connecting Your AI (Cursor Example)
-The easiest way to use this is locally with an AI code editor like Cursor.
-
-1. Open Cursor's settings.
-2. Navigate to **Features** -> **MCP Servers**.
-3. Click **Add New MCP Server**.
-4. Set the name to `DevOps`.
-5. Set the type to `command`.
-6. For the command, you must provide the absolute path to the virtual environment's python, and the absolute path to `server.py`. 
-
-**Example Command (Update your paths):**
-```text
-/Users/YOUR_NAME/devops-mcp-server/venv/bin/python /Users/YOUR_NAME/devops-mcp-server/app/server.py
-```
-
-Click save. You should see a green light indicating the server is connected and the tools are registered!
-
----
-
-## 💬 Step 4: How to Speak to the AI
+## 💬 Step 3: How to Speak to the AI
 
 Now that your AI is connected, you don't need to write code. You just talk to it like a senior engineer. The AI will automatically decide which tools to call.
 
@@ -75,12 +55,9 @@ Now that your AI is connected, you don't need to write code. You just talk to it
 
 ---
 
-## 🚢 Advanced: Deploying for LangGraph / CI/CD
-If you are building an automated LangGraph pipeline or AutoGPT agent, you don't want to run this locally. You want it deployed in your cluster.
+## ⚠️ Troubleshooting
 
-We provide a `Dockerfile` and a `deployment.yaml`.
-When deployed to Kubernetes, the server automatically switches to **SSE Transport Mode** (Server-Sent Events) and binds to HTTP port `8000`.
-
-Your central LangGraph agent can then hit this endpoint `http://devops-mcp.default.svc.cluster.local:8000/sse` to execute infrastructure operations inside the VPC. 
-
-*Note: Ensure the Kubernetes `ServiceAccount` attached to the deployment has the correct RBAC rules and IRSA (IAM Roles for Service Accounts) policies.*
+If your AI complains that a tool failed:
+- **"Kubernetes client not initialized"**: The server could not find your `~/.kube/config`. Ensure it is mounted or passed correctly in your MCP settings.
+- **"AWS Credentials not found"**: Ensure your `AWS_PROFILE` is set or you have run `aws sso login`. In Cursor/Claude Desktop, you may need to explicitly pass `AWS_PROFILE` in the MCP `env` config.
+- **"Directory does not exist"**: When asking the AI to run Terraform, ensure you give it the correct absolute path to your Terraform directory.
