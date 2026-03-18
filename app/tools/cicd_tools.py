@@ -14,11 +14,10 @@ def get_github_headers() -> dict:
         headers["Authorization"] = f"Bearer {token}"
     return headers
 
-def get_github_pipeline_status(owner: str, repo: str) -> dict:
+def get_pipeline_status(owner: str, repo: str) -> dict:
     """
     Get the status of the most recent GitHub Actions pipeline runs for a repository.
     """
-    logger.info(f"Fetching pipeline status for {owner}/{repo}")
     url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs"
     
     try:
@@ -48,13 +47,12 @@ def get_github_pipeline_status(owner: str, repo: str) -> dict:
             "hint": "Ensure the repository exists and is accessible. Set GITHUB_TOKEN environment variable for private repos."
         }
 
-def get_github_failed_jobs(owner: str, repo: str, run_id: int) -> dict:
+def get_failed_pipeline_jobs(owner: str, repo: str, run_id: int) -> dict:
     """
     Get the specifically failed jobs from a GitHub Actions workflow run.
     Useful for an AI to quickly see which specific tests or build steps failed
     without parsing the entire pipeline context.
     """
-    logger.info(f"Fetching failed jobs for {owner}/{repo} run {run_id}")
     url = f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
     
     try:

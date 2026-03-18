@@ -2,12 +2,11 @@ from app.utils.logger import logger
 import boto3
 from datetime import datetime, timedelta
 
-def estimate_aws_cost(service: str = None, start_date: str = None, end_date: str = None) -> dict:
+def estimate_cost(service: str = None, start_date: str = None, end_date: str = None) -> dict:
     """
     Query AWS Cost Explorer for billing estimates.
     If dates are not provided, defaults to the last 30 days.
     """
-    logger.info(f"Estimating AWS cost for service={service}, start={start_date}, end={end_date}")
     
     # Calculate dates if not provided
     if not end_date:
@@ -70,11 +69,10 @@ def estimate_aws_cost(service: str = None, start_date: str = None, end_date: str
             "hint": "Ensure the application has AWS credentials with Cost Explorer (ce:GetCostAndUsage) permissions."
         }
 
-def list_aws_ec2_instances(region: str) -> dict:
+def list_ec2_instances(region: str) -> dict:
     """
     List EC2 instances in a specific AWS region.
     """
-    logger.info(f"Listing EC2 instances in region: {region}")
     try:
         ec2 = boto3.client("ec2", region_name=region)
         response = ec2.describe_instances()
@@ -102,11 +100,10 @@ def list_aws_ec2_instances(region: str) -> dict:
         logger.error(f"Failed to list EC2 instances: {e}")
         return {"status": "error", "message": str(e)}
 
-def list_aws_s3_buckets() -> dict:
+def list_s3_buckets() -> dict:
     """
     List all S3 buckets in the AWS account.
     """
-    logger.info("Listing S3 buckets")
     try:
         s3 = boto3.client("s3")
         response = s3.list_buckets()
@@ -123,11 +120,10 @@ def list_aws_s3_buckets() -> dict:
         logger.error(f"Failed to list S3 buckets: {e}")
         return {"status": "error", "message": str(e)}
 
-def list_aws_ecs_clusters(region: str) -> dict:
+def list_ecs_clusters(region: str) -> dict:
     """
     List ECS clusters in a specific AWS region.
     """
-    logger.info(f"Listing ECS clusters in region: {region}")
     try:
         ecs = boto3.client("ecs", region_name=region)
         response = ecs.list_clusters()

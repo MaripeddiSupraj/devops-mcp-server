@@ -16,11 +16,10 @@ except Exception as e:
     logger.warning(f"Failed to initialize Kubernetes client: {e}")
     v1_client = None
 
-def get_pods(namespace: str) -> list[dict]:
+def get_kubernetes_pods(namespace: str) -> list[dict]:
     """
     Get pods in a Kubernetes namespace.
     """
-    logger.info(f"Getting pods for namespace: {namespace}")
     
     if not v1_client:
         return [{"error": "Kubernetes client not initialized. Check configuration."}]
@@ -47,7 +46,6 @@ def get_kubernetes_logs(namespace: str, pod_name: str, container_name: str = Non
     Get the logs for a specific pod in a namespace.
     Optionally specify a container name if the pod has multiple containers.
     """
-    logger.info(f"Getting logs for pod {pod_name} in namespace {namespace}")
     if not v1_client:
         return {"error": "Kubernetes client not initialized."}
         
@@ -66,7 +64,6 @@ def get_kubernetes_events(namespace: str) -> list[dict]:
     """
     Get the most recent events in a Kubernetes namespace, useful for debugging scheduling or crash loops.
     """
-    logger.info(f"Getting events for namespace {namespace}")
     if not v1_client:
         return [{"error": "Kubernetes client not initialized."}]
         
@@ -92,7 +89,6 @@ def get_kubernetes_deployments(namespace: str) -> list[dict]:
     """
     Get deployments in a Kubernetes namespace, including their readiness state and image versions.
     """
-    logger.info(f"Getting deployments for namespace {namespace}")
     
     try:
         # Deployments use AppsV1Api
@@ -122,7 +118,6 @@ def get_kubernetes_services(namespace: str) -> list[dict]:
     """
     Get services in a Kubernetes namespace, showing internal IPs and ports.
     """
-    logger.info(f"Getting services for namespace {namespace}")
     if not v1_client:
         return [{"error": "Kubernetes client not initialized."}]
         
@@ -155,7 +150,6 @@ def get_kubernetes_ingresses(namespace: str) -> list[dict]:
     """
     Get ingresses in a Kubernetes namespace, showing external routing and hostnames.
     """
-    logger.info(f"Getting ingresses for namespace {namespace}")
     
     try:
         # Ingresses use NetworkingV1Api
