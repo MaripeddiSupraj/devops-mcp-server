@@ -173,6 +173,362 @@ class KubernetesClient:
                 "replicas": d.spec.replicas,
                 "available": d.status.available_replicas or 0,
                 "ready": d.status.ready_replicas or 0,
+                "image": d.spec.template.spec.containers[0].image
+                if d.spec.template.spec.containers else None,
+                "conditions": [
+                    {"type": c.type, "status": c.status, "reason": c.reason}
+                    for c in (d.status.conditions or [])
+                ],
             }
             for d in resp.items
         ]
+
+    # ── Logs ──────────────────────────────────────────────────────────────────
+
+    def get_logs(
+        self,
+        pod_name: str,
+        namespace: str = "default",
+        container: Optional[str] = None,
+        tail_lines: int = 100,
+        previous: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Fetch logs from a pod container.
+
+        Args:
+            pod_name:   Name of the target pod.
+            namespace:  Pod namespace.
+            container:  Container name (auto-selected if pod has only one).
+            tail_lines: Number of lines to return from the end of the log.
+            previous:   If True, return logs from the previous (crashed) container instance.
+
+        Returns:
+            Dict with ``pod``, ``container``, ``lines``, ``log`` (full text).
+        """
+        kwargs: Dict[str, Any] = {
+            "name": pod_name,
+            "namespace": namespace,
+            "tail_lines": tail_lines,
+            "previous": previous,
+            "_preload_content": True,
+        }
+        if container:
+            kwargs["container"] = container
+
+        try:
+            log_text: str = self._core.read_namespaced_pod_log(**kwargs)
+        except ApiException as exc:
+            raise K8sClientError(f"read_namespaced_pod_log failed: {exc}") from exc
+
+        lines = log_text.splitlines()
+        log.info("k8s_logs_fetched", pod=pod_name, namespace=namespace, lines=len(lines))
+        return {
+            "pod": pod_name,
+            "namespace": namespace,
+            "container": container or "auto",
+            "tail_lines": tail_lines,
+            "previous": previous,
+            "lines": len(lines),
+            "log": log_text,
+        }
+
+    # ── Events ────────────────────────────────────────────────────────────────
+
+    def get_events(
+        self,
+        namespace: str = "default",
+        field_selector: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Return Kubernetes events for *namespace*, sorted newest-first.
+
+        Args:
+            namespace:      Namespace to query.
+            field_selector: Optional field selector, e.g. ``"involvedObject.name=my-pod"``.
+
+        Returns:
+            List of event dicts with ``type``, ``reason``, ``message``, ``object``, ``count``, ``time``.
+        """
+        kwargs: Dict[str, Any] = {"namespace": namespace}
+        if field_selector:
+            kwargs["field_selector"] = field_selector
+
+        try:
+            resp = self._core.list_namespaced_event(**kwargs)
+        except ApiException as exc:
+            raise K8sClientError(f"list_namespaced_event failed: {exc}") from exc
+
+        events = [
+            {
+                "type": e.type,           # Normal | Warning
+                "reason": e.reason,
+                "message": e.message,
+                "object": f"{e.involved_object.kind}/{e.involved_object.name}",
+                "count": e.count or 1,
+                "first_time": str(e.first_timestamp) if e.first_timestamp else None,
+                "last_time": str(e.last_timestamp) if e.last_timestamp else None,
+            }
+            for e in resp.items
+        ]
+        # Sort warnings first, then by last_time descending
+        events.sort(key=lambda x: (x["type"] != "Warning", x["last_time"] or ""), reverse=False)
+        return events
+
+    # ── Scale ─────────────────────────────────────────────────────────────────
+
+    def scale_deployment(
+        self,
+        name: str,
+        replicas: int,
+        namespace: str = "default",
+    ) -> Dict[str, Any]:
+        """
+        Patch the replica count of a Deployment.
+
+        Args:
+            name:      Deployment name.
+            replicas:  Desired replica count (0 to scale to zero).
+            namespace: Target namespace.
+
+        Returns:
+            Dict with ``name``, ``namespace``, ``previous_replicas``, ``new_replicas``.
+        """
+        try:
+            current = self._apps.read_namespaced_deployment(name=name, namespace=namespace)
+        except ApiException as exc:
+            raise K8sClientError(f"Deployment '{name}' not found: {exc}") from exc
+
+        previous = current.spec.replicas
+        body = {"spec": {"replicas": replicas}}
+
+        try:
+            result = self._apps.patch_namespaced_deployment(
+                name=name, namespace=namespace, body=body
+            )
+        except ApiException as exc:
+            raise K8sClientError(f"scale_deployment failed: {exc}") from exc
+
+        log.info(
+            "k8s_deployment_scaled",
+            name=name,
+            namespace=namespace,
+            previous=previous,
+            new=replicas,
+        )
+        return {
+            "name": name,
+            "namespace": namespace,
+            "previous_replicas": previous,
+            "new_replicas": result.spec.replicas,
+        }
+
+    # ── Rollout ───────────────────────────────────────────────────────────────
+
+    def rollout_restart(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """
+        Trigger a rolling restart of a Deployment by patching an annotation.
+
+        Equivalent to ``kubectl rollout restart deployment/<name>``.
+
+        Returns:
+            Dict confirming the restart was triggered.
+        """
+        import datetime
+
+        now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        body = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {"kubectl.kubernetes.io/restartedAt": now}
+                    }
+                }
+            }
+        }
+
+        try:
+            self._apps.patch_namespaced_deployment(name=name, namespace=namespace, body=body)
+        except ApiException as exc:
+            raise K8sClientError(f"rollout_restart failed for '{name}': {exc}") from exc
+
+        log.info("k8s_rollout_restart_triggered", name=name, namespace=namespace)
+        return {
+            "name": name,
+            "namespace": namespace,
+            "action": "rollout_restart",
+            "triggered_at": now,
+            "message": f"Rolling restart triggered for deployment '{name}'.",
+        }
+
+    def rollout_status(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        """
+        Return the current rollout status of a Deployment.
+
+        Mirrors the output of ``kubectl rollout status deployment/<name>``.
+
+        Returns:
+            Dict with ``name``, ``desired``, ``updated``, ``ready``, ``available``, ``complete``.
+        """
+        try:
+            d = self._apps.read_namespaced_deployment(name=name, namespace=namespace)
+        except ApiException as exc:
+            raise K8sClientError(f"Deployment '{name}' not found: {exc}") from exc
+
+        desired = d.spec.replicas or 0
+        updated = d.status.updated_replicas or 0
+        ready = d.status.ready_replicas or 0
+        available = d.status.available_replicas or 0
+
+        complete = (updated == desired) and (ready == desired) and (available == desired)
+
+        return {
+            "name": name,
+            "namespace": namespace,
+            "desired": desired,
+            "updated": updated,
+            "ready": ready,
+            "available": available,
+            "complete": complete,
+            "conditions": [
+                {"type": c.type, "status": c.status, "message": c.message}
+                for c in (d.status.conditions or [])
+            ],
+        }
+
+    # ── Services ──────────────────────────────────────────────────────────────
+
+    def get_services(self, namespace: str = "default") -> List[Dict[str, Any]]:
+        """
+        List services in *namespace*.
+
+        Returns:
+            List of dicts with ``name``, ``type``, ``cluster_ip``, ``external_ip``,
+            ``ports``, ``selector``.
+        """
+        try:
+            resp = self._core.list_namespaced_service(namespace=namespace)
+        except ApiException as exc:
+            raise K8sClientError(f"list_namespaced_service failed: {exc}") from exc
+
+        services = []
+        for svc in resp.items:
+            ports = [
+                {
+                    "port": p.port,
+                    "target_port": str(p.target_port),
+                    "protocol": p.protocol,
+                    "node_port": p.node_port,
+                }
+                for p in (svc.spec.ports or [])
+            ]
+            external_ips = (
+                svc.status.load_balancer.ingress[0].ip
+                if (
+                    svc.status.load_balancer
+                    and svc.status.load_balancer.ingress
+                )
+                else svc.spec.external_i_ps or None
+            )
+            services.append(
+                {
+                    "name": svc.metadata.name,
+                    "namespace": svc.metadata.namespace,
+                    "type": svc.spec.type,
+                    "cluster_ip": svc.spec.cluster_ip,
+                    "external_ip": external_ips,
+                    "ports": ports,
+                    "selector": svc.spec.selector or {},
+                }
+            )
+        return services
+
+    # ── Nodes ─────────────────────────────────────────────────────────────────
+
+    def get_nodes(self) -> List[Dict[str, Any]]:
+        """
+        Return cluster node health and capacity information.
+
+        Returns:
+            List of dicts with ``name``, ``status``, ``roles``, ``version``,
+            ``cpu``, ``memory``, ``os``, ``container_runtime``.
+        """
+        try:
+            resp = self._core.list_node()
+        except ApiException as exc:
+            raise K8sClientError(f"list_node failed: {exc}") from exc
+
+        nodes = []
+        for node in resp.items:
+            labels = node.metadata.labels or {}
+            roles = [
+                lbl.split("/")[-1]
+                for lbl in labels
+                if lbl.startswith("node-role.kubernetes.io/")
+            ] or ["worker"]
+
+            conditions = {c.type: c.status for c in (node.status.conditions or [])}
+            ready = conditions.get("Ready") == "True"
+
+            capacity = node.status.capacity or {}
+            nodes.append(
+                {
+                    "name": node.metadata.name,
+                    "ready": ready,
+                    "roles": roles,
+                    "k8s_version": node.status.node_info.kubelet_version,
+                    "os": node.status.node_info.os_image,
+                    "container_runtime": node.status.node_info.container_runtime_version,
+                    "cpu": capacity.get("cpu"),
+                    "memory": capacity.get("memory"),
+                    "conditions": [
+                        {"type": c.type, "status": c.status}
+                        for c in (node.status.conditions or [])
+                    ],
+                }
+            )
+        return nodes
+
+    # ── Delete Pod ────────────────────────────────────────────────────────────
+
+    def delete_pod(
+        self,
+        pod_name: str,
+        namespace: str = "default",
+        grace_period_seconds: int = 30,
+    ) -> Dict[str, Any]:
+        """
+        Delete a pod (Kubernetes will recreate it via the owning ReplicaSet/Deployment).
+
+        Args:
+            pod_name:              Pod to delete.
+            namespace:             Pod namespace.
+            grace_period_seconds:  Termination grace period (0 for immediate).
+
+        Returns:
+            Dict confirming the deletion.
+        """
+        try:
+            self._core.delete_namespaced_pod(
+                name=pod_name,
+                namespace=namespace,
+                grace_period_seconds=grace_period_seconds,
+            )
+        except ApiException as exc:
+            if exc.status == 404:
+                raise K8sClientError(f"Pod '{pod_name}' not found in namespace '{namespace}'.") from exc
+            raise K8sClientError(f"delete_namespaced_pod failed: {exc}") from exc
+
+        log.info(
+            "k8s_pod_deleted",
+            pod=pod_name,
+            namespace=namespace,
+            grace_period=grace_period_seconds,
+        )
+        return {
+            "pod": pod_name,
+            "namespace": namespace,
+            "action": "deleted",
+            "grace_period_seconds": grace_period_seconds,
+            "message": f"Pod '{pod_name}' deleted. Kubernetes will reschedule it if managed by a controller.",
+        }

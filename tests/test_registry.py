@@ -64,17 +64,31 @@ class TestBuildRegistry:
     def test_all_tools_registered(self):
         registry = build_registry()
         expected_tools = {
+            # Terraform
             "terraform_plan",
             "terraform_apply",
             "terraform_destroy",
+            # GitHub
             "github_create_pull_request",
             "github_get_repo",
+            # AWS
             "aws_create_ec2_instance",
             "aws_list_ec2_instances",
             "aws_create_s3_bucket",
             "aws_list_s3_buckets",
+            # Kubernetes — core
             "k8s_deploy",
             "k8s_get_pods",
+            # Kubernetes — extended
+            "k8s_get_logs",
+            "k8s_get_events",
+            "k8s_scale",
+            "k8s_rollout_restart",
+            "k8s_rollout_status",
+            "k8s_get_deployments",
+            "k8s_get_services",
+            "k8s_get_nodes",
+            "k8s_delete_pod",
         }
         registered = set(registry.list_names())
         assert expected_tools == registered

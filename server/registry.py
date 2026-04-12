@@ -106,7 +106,19 @@ def build_registry() -> ToolRegistry:
     from tools.terraform import apply, destroy, plan
     from tools.github import create_pr, get_repo
     from tools.aws import ec2, s3
-    from tools.kubernetes import deploy, get_pods
+    from tools.kubernetes import (
+        deploy,
+        get_pods,
+        get_logs,
+        get_events,
+        scale,
+        rollout_restart,
+        rollout_status,
+        get_deployments,
+        get_services,
+        get_nodes,
+        delete_pod,
+    )
 
     registry = ToolRegistry()
 
@@ -193,6 +205,69 @@ def build_registry() -> ToolRegistry:
         input_schema=get_pods.TOOL_INPUT_SCHEMA,
         handler=get_pods.handler,
         tags=["kubernetes", "k8s"],
+    ))
+    registry.register(ToolEntry(
+        name=get_logs.TOOL_NAME,
+        description=get_logs.TOOL_DESCRIPTION,
+        input_schema=get_logs.TOOL_INPUT_SCHEMA,
+        handler=get_logs.handler,
+        tags=["kubernetes", "k8s", "debug"],
+    ))
+    registry.register(ToolEntry(
+        name=get_events.TOOL_NAME,
+        description=get_events.TOOL_DESCRIPTION,
+        input_schema=get_events.TOOL_INPUT_SCHEMA,
+        handler=get_events.handler,
+        tags=["kubernetes", "k8s", "debug"],
+    ))
+    registry.register(ToolEntry(
+        name=scale.TOOL_NAME,
+        description=scale.TOOL_DESCRIPTION,
+        input_schema=scale.TOOL_INPUT_SCHEMA,
+        handler=scale.handler,
+        tags=["kubernetes", "k8s", "deployment"],
+    ))
+    registry.register(ToolEntry(
+        name=rollout_restart.TOOL_NAME,
+        description=rollout_restart.TOOL_DESCRIPTION,
+        input_schema=rollout_restart.TOOL_INPUT_SCHEMA,
+        handler=rollout_restart.handler,
+        tags=["kubernetes", "k8s", "deployment"],
+    ))
+    registry.register(ToolEntry(
+        name=rollout_status.TOOL_NAME,
+        description=rollout_status.TOOL_DESCRIPTION,
+        input_schema=rollout_status.TOOL_INPUT_SCHEMA,
+        handler=rollout_status.handler,
+        tags=["kubernetes", "k8s", "deployment"],
+    ))
+    registry.register(ToolEntry(
+        name=get_deployments.TOOL_NAME,
+        description=get_deployments.TOOL_DESCRIPTION,
+        input_schema=get_deployments.TOOL_INPUT_SCHEMA,
+        handler=get_deployments.handler,
+        tags=["kubernetes", "k8s", "deployment"],
+    ))
+    registry.register(ToolEntry(
+        name=get_services.TOOL_NAME,
+        description=get_services.TOOL_DESCRIPTION,
+        input_schema=get_services.TOOL_INPUT_SCHEMA,
+        handler=get_services.handler,
+        tags=["kubernetes", "k8s", "networking"],
+    ))
+    registry.register(ToolEntry(
+        name=get_nodes.TOOL_NAME,
+        description=get_nodes.TOOL_DESCRIPTION,
+        input_schema=get_nodes.TOOL_INPUT_SCHEMA,
+        handler=get_nodes.handler,
+        tags=["kubernetes", "k8s", "cluster"],
+    ))
+    registry.register(ToolEntry(
+        name=delete_pod.TOOL_NAME,
+        description=delete_pod.TOOL_DESCRIPTION,
+        input_schema=delete_pod.TOOL_INPUT_SCHEMA,
+        handler=delete_pod.handler,
+        tags=["kubernetes", "k8s", "debug"],
     ))
 
     log.info("registry_built", total_tools=len(registry))
