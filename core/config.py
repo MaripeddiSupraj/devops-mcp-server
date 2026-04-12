@@ -7,7 +7,6 @@ All settings are loaded from environment variables (or a .env file).
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from typing import Optional
 
@@ -43,12 +42,32 @@ class Settings(BaseSettings):
         env="TERRAFORM_ALLOWED_BASE_DIR",
         description="Root directory under which all Terraform paths must reside.",
     )
+    terraform_timeout_seconds: int = Field(
+        default=600,
+        env="TERRAFORM_TIMEOUT_SECONDS",
+        description="Maximum seconds a single Terraform command may run before being killed.",
+    )
 
     # ── Server ───────────────────────────────────────────────────────────────
     server_host: str = Field(default="0.0.0.0", env="SERVER_HOST")
     server_port: int = Field(default=8000, env="SERVER_PORT")
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     dry_run: bool = Field(default=False, env="DRY_RUN")
+    cors_origins: str = Field(
+        default="*",
+        env="CORS_ORIGINS",
+        description=(
+            "Comma-separated list of allowed CORS origins. "
+            "Use '*' for dev/local. Set explicit origins in production. "
+            "Example: https://app.example.com,https://admin.example.com"
+        ),
+    )
+
+    def cors_origins_list(self) -> list[str]:
+        """Return CORS_ORIGINS parsed into a list."""
+        if self.cors_origins.strip() == "*":
+            return ["*"]
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
 @lru_cache(maxsize=1)
