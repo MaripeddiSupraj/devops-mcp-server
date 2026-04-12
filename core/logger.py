@@ -4,6 +4,9 @@ core/logger.py
 Structured JSON logging setup for the entire application.
 Provides a `get_logger` factory and a context-aware `ToolLogger` wrapper
 that automatically includes tool name, inputs, timing, and errors.
+
+Fix applied: use stdlib.LoggerFactory() instead of PrintLoggerFactory() so
+that `add_logger_name` (which reads logger.name) works correctly.
 """
 
 from __future__ import annotations
@@ -11,8 +14,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
-from contextlib import contextmanager
-from typing import Any, Dict, Generator
+from typing import Any, Dict
 
 import structlog
 from structlog.types import FilteringBoundLogger
@@ -27,16 +29,14 @@ def _configure_structlog() -> None:
     shared_processors = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_logger_name,   # requires stdlib.LoggerFactory — see below
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
     ]
 
     if sys.stdout.isatty():
-        # Human-readable output for local development
         renderer = structlog.dev.ConsoleRenderer()
     else:
-        # Machine-parseable JSON in CI / production
         renderer = structlog.processors.JSONRenderer()
 
     structlog.configure(
@@ -45,11 +45,13 @@ def _configure_structlog() -> None:
             logging.getLevelName(settings.log_level.upper())
         ),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        # stdlib.LoggerFactory() returns a stdlib Logger which has a .name attribute,
+        # required by the add_logger_name processor above.
+        # PrintLoggerFactory() was used previously but PrintLogger has no .name → crash.
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
-    # Also route stdlib logging through structlog so third-party libs are captured
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
@@ -68,6 +70,8 @@ def get_logger(name: str) -> FilteringBoundLogger:
 class ToolLogger:
     """
     Context manager that logs tool invocation lifecycle.
+
+    Logs tool name, inputs, elapsed time, and any exception on exit.
 
     Usage::
 
@@ -107,8 +111,13 @@ class ToolLogger:
                 tool=self._tool_name,
                 elapsed_ms=elapsed_ms,
             )
-        return False  # do not suppress exceptions
+        return False  # never suppress exceptions
 
     def set_result(self, result: Any) -> None:
-        """Optionally bind a result summary for richer log output."""
-        self._log = self._log.bind(result_preview=str(result)[:200])
+        """Bind a trimmed result preview to the logger for richer output."""
+        try:
+            import json
+            preview = json.dumps(result, default=str)[:300]
+        except Exception:
+            preview = str(result)[:300]
+        self._log = self._log.bind(result_preview=preview)

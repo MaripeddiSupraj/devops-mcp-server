@@ -115,6 +115,18 @@ class TerraformRunner:
                 args.append("-auto-approve")
             return self._run(args, work_dir)
 
+    def validate(self, path: str) -> dict:
+        """
+        Run ``terraform validate`` — checks syntax and internal consistency
+        without contacting any provider APIs.
+
+        Safe to run without credentials; used as the dry_run path for plan.
+        """
+        work_dir = self._validated_path(path)
+        with _get_path_lock(work_dir):
+            self._ensure_initialized(work_dir)
+            return self._run(["validate", "-no-color"], work_dir)
+
     def version(self) -> dict:
         """Return ``terraform version`` output."""
         return self._run(["version", "-json"], cwd=None)

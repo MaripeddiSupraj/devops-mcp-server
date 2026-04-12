@@ -84,7 +84,7 @@ def _paginate(list_fn, **kwargs) -> list:
             kwargs["_continue"] = continue_token
         resp = list_fn(**kwargs)
         items.extend(resp.items)
-        continue_token = (resp.metadata or {}) and getattr(resp.metadata, "_continue", None)
+        continue_token = getattr(resp.metadata, "_continue", None) if resp.metadata else None
         if not continue_token:
             break
 

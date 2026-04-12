@@ -61,8 +61,11 @@ def handler(path: str, dry_run: bool = False) -> Dict[str, Any]:
     runner = TerraformRunner()
 
     if effective_dry_run:
+        # validate is a safe read-only command — expose it via the public plan()
+        # interface by passing it as an extra arg override is not clean,
+        # so we add a dedicated validate() method on the runner instead.
         log.info("terraform_plan_dry_run", path=path)
-        result = runner._run(["validate", "-no-color"], runner._validated_path(path))
+        result = runner.validate(path)
     else:
         result = runner.plan(path)
 
