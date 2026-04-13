@@ -53,6 +53,20 @@ class Settings(BaseSettings):
     server_port: int = Field(default=8000, env="SERVER_PORT")
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
     dry_run: bool = Field(default=False, env="DRY_RUN")
+    api_key: Optional[str] = Field(
+        default=None,
+        env="MCP_API_KEY",
+        description=(
+            "When set, every request to /tools/* must include "
+            "'Authorization: Bearer <key>' or 'X-API-Key: <key>'. "
+            "Leave unset to disable auth (dev/local only)."
+        ),
+    )
+    environment: str = Field(
+        default="development",
+        env="ENVIRONMENT",
+        description="Runtime environment label (development | staging | production).",
+    )
     cors_origins: str = Field(
         default="*",
         env="CORS_ORIGINS",

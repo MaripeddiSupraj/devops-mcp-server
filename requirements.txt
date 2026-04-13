@@ -4,6 +4,7 @@ uvicorn[standard]==0.29.0
 pydantic==2.7.1
 pydantic-settings==2.2.1
 slowapi==0.1.9
+prometheus-fastapi-instrumentator==7.0.0
 
 # ── Validation ────────────────────────────────────────────────────────────────
 jsonschema==4.22.0

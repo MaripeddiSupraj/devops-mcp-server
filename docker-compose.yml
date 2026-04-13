@@ -1,0 +1,88 @@
+version: "3.9"
+
+# ── DevOps MCP Server — Docker Compose ───────────────────────────────────────
+#
+# Usage:
+#   cp .env.example .env          # fill in your credentials
+#   docker compose up             # start server + prometheus + grafana
+#   docker compose up mcp         # start only the MCP server
+#
+# Endpoints:
+#   MCP server:  http://localhost:8000
+#   Swagger UI:  http://localhost:8000/docs
+#   Prometheus:  http://localhost:9090
+#   Grafana:     http://localhost:3000  (admin / admin)
+
+services:
+
+  # ── MCP Server ─────────────────────────────────────────────────────────────
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: devops-mcp-server:local
+    container_name: devops-mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+      - DRY_RUN=false
+    volumes:
+      - terraform_workdir:/tmp/terraform
+      # Mount kubeconfig for local k8s access (optional)
+      - ${KUBECONFIG:-~/.kube/config}:/home/mcpuser/.kube/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mcp-net
+
+  # ── Prometheus ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.1
+    container_name: devops-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    networks:
+      - mcp-net
+
+  # ── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: devops-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - mcp-net
+
+volumes:
+  terraform_workdir:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  mcp-net:
+    driver: bridge

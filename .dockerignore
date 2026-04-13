@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environments
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+env/
+
+# Git
+.git/
+.gitignore
+
+# CI / IDE
+.github/
+.vscode/
+.idea/
+*.iml
+
+# Terraform state (never bake into image)
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+
+# Tests & docs
+tests/
+*.md
+infra/
+
+# Misc
+*.log
+.DS_Store

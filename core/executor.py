@@ -48,26 +48,24 @@ class ToolExecutor:
         """
         Validate *inputs* and execute the tool identified by *tool_name*.
 
-        Args:
-            tool_name: Registered name of the tool to run.
-            inputs:    Raw input dict from the caller.
+        Raises:
+            ToolNotFoundError:   if the tool name is not registered.
+            InputValidationError: if inputs fail JSON-schema validation.
 
         Returns:
-            ToolResponse with status ``"success"`` or ``"error"``.
+            ToolResponse with status ``"success"`` or ``"error"`` for
+            runtime errors from the tool itself (e.g. AWS API failures).
         """
         with ToolLogger(tool_name, inputs) as tl:
+            # Let ToolNotFoundError and InputValidationError propagate —
+            # callers (HTTP routes) convert them to 404 / 400 responses.
+            tool_def = self._resolve_tool(tool_name)
+            self._validate_inputs(tool_def, inputs)
+
             try:
-                tool_def = self._resolve_tool(tool_name)
-                self._validate_inputs(tool_def, inputs)
                 result = tool_def.handler(**inputs)
                 tl.set_result(result)
                 response = ToolResponse(status="success", data=result)
-            except ToolNotFoundError as exc:
-                log.warning("tool_not_found", tool=tool_name, error=str(exc))
-                response = ToolResponse(status="error", error=str(exc))
-            except InputValidationError as exc:
-                log.warning("input_validation_failed", tool=tool_name, error=str(exc))
-                response = ToolResponse(status="error", error=str(exc))
             except Exception as exc:  # pylint: disable=broad-except
                 log.error(
                     "tool_execution_error",
@@ -78,6 +76,22 @@ class ToolExecutor:
                 response = ToolResponse(status="error", error=str(exc))
 
         return response
+
+    def execute_safe(self, tool_name: str, inputs: Dict[str, Any]) -> ToolResponse:
+        """
+        Like ``execute`` but catches all exceptions (including ToolNotFoundError
+        and InputValidationError) and returns them as error ToolResponses.
+
+        Used by the batch endpoint so one bad call never aborts the batch.
+        """
+        try:
+            return self.execute(tool_name, inputs)
+        except (ToolNotFoundError, InputValidationError) as exc:
+            log.warning("tool_call_error", tool=tool_name, error=str(exc))
+            return ToolResponse(status="error", error=str(exc))
+        except Exception as exc:
+            log.error("tool_call_error", tool=tool_name, error=str(exc))
+            return ToolResponse(status="error", error=str(exc))
 
     # ── private helpers ──────────────────────────────────────────────────────
 
