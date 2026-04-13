@@ -24,6 +24,25 @@ class ToolCallRequest(BaseModel):
     )
 
 
+class BatchToolCallRequest(BaseModel):
+    """A single item inside a batch execute request."""
+
+    tool_name: str = Field(..., description="Registered name of the tool to execute.")
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    call_id: Optional[str] = Field(
+        default=None,
+        description="Optional caller-supplied identifier echoed back in the response.",
+    )
+
+
+class BatchExecuteRequest(BaseModel):
+    """Payload for POST /tools/execute/batch — runs multiple tools in one request."""
+
+    calls: List[BatchToolCallRequest] = Field(
+        ..., description="Ordered list of tool calls to execute (max 20)."
+    )
+
+
 # ── Outbound ─────────────────────────────────────────────────────────────────
 
 class ToolResponse(BaseModel):
@@ -40,6 +59,30 @@ class ToolResponse(BaseModel):
         default=None,
         description="Human-readable error message when status='error'.",
     )
+    request_id: Optional[str] = Field(
+        default=None,
+        description="UUID assigned to the HTTP request — matches the X-Request-ID response header.",
+    )
+
+
+class BatchToolResult(BaseModel):
+    """Result for one tool call inside a batch response."""
+
+    call_id: Optional[str] = None
+    tool_name: str
+    status: Literal["success", "error"]
+    data: Optional[Any] = None
+    error: Optional[str] = None
+
+
+class BatchExecuteResponse(BaseModel):
+    """Response from POST /tools/execute/batch."""
+
+    results: List[BatchToolResult]
+    total: int
+    succeeded: int
+    failed: int
+    request_id: Optional[str] = None
 
 
 class ToolDefinition(BaseModel):
@@ -48,6 +91,7 @@ class ToolDefinition(BaseModel):
     name: str
     description: str
     input_schema: Dict[str, Any]
+    tags: List[str] = Field(default_factory=list)
 
 
 class ToolListResponse(BaseModel):
@@ -65,3 +109,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     version: str = "1.0.0"
     tools_registered: int = 0
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Non-fatal startup warnings (e.g. missing credentials).",
+    )

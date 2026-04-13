@@ -44,6 +44,7 @@ class ToolEntry:
             name=self.name,
             description=self.description,
             input_schema=self.input_schema,
+            tags=self.tags,
         )
 
 
@@ -88,9 +89,23 @@ class ToolRegistry:
         """Return sorted list of registered tool names."""
         return sorted(self._tools.keys())
 
-    def list_definitions(self) -> List[ToolDefinition]:
-        """Return ToolDefinition objects suitable for JSON serialisation."""
-        return [entry.to_definition() for entry in self._tools.values()]
+    def list_definitions(self, tag: Optional[str] = None) -> List[ToolDefinition]:
+        """Return ToolDefinition objects suitable for JSON serialisation.
+
+        Args:
+            tag: If provided, only return tools whose tags list contains this value.
+        """
+        entries = self._tools.values()
+        if tag:
+            entries = [e for e in entries if tag in e.tags]
+        return [entry.to_definition() for entry in entries]
+
+    def list_tags(self) -> List[str]:
+        """Return a sorted, deduplicated list of all tags across all tools."""
+        tags: set[str] = set()
+        for entry in self._tools.values():
+            tags.update(entry.tags)
+        return sorted(tags)
 
     def __len__(self) -> int:
         return len(self._tools)
