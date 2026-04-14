@@ -46,9 +46,12 @@ from core.executor import ToolExecutor
 from core.logger import get_logger
 from core.security import verify_api_key
 from core.startup import collect_startup_warnings
+from core.audit import audit_log
 from server.jobs import JobStore, job_store, run_job
 from server.registry import build_registry
 from server.schemas import (
+    AuditEntry,
+    AuditResponse,
     BatchExecuteRequest,
     BatchExecuteResponse,
     BatchToolResult,
@@ -274,9 +277,16 @@ async def execute_tool(
     request_id = structlog.contextvars.get_contextvars().get("request_id")
     log.info("execute_request", tool=body.tool_name, inputs=body.inputs)
 
+    # Build a safe hint from the API key for the audit log
+    raw_key = (
+        request.headers.get("X-API-Key")
+        or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    )
+    api_key_hint = (raw_key[:8] + "…") if raw_key else "anonymous"
+
     from core.executor import InputValidationError, ToolNotFoundError
     try:
-        response = executor.execute(body.tool_name, body.inputs)
+        response = executor.execute(body.tool_name, body.inputs, api_key_hint=api_key_hint)
     except ToolNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except InputValidationError as exc:
@@ -396,6 +406,39 @@ async def get_job(
             detail=f"Job '{job_id}' not found. It may have expired (TTL: 1 hour).",
         )
     return JobResponse(**job.to_dict())
+
+
+# ── Audit log endpoint ────────────────────────────────────────────────────────
+
+@app.get(
+    "/audit",
+    response_model=AuditResponse,
+    tags=["Audit"],
+    summary="Recent tool invocations",
+    responses={
+        401: {"description": "Missing API key"},
+        403: {"description": "Invalid API key"},
+    },
+)
+async def get_audit_log(
+    limit: int = 100,
+    _auth: None = Depends(verify_api_key),
+) -> AuditResponse:
+    """
+    Return the most recent tool invocations from the audit log.
+
+    Includes tool name, status, duration, timestamp, and a masked API key hint.
+    Protected by the same API key auth as the execute endpoints.
+
+    **Query params:**
+    - ``limit`` — number of entries to return (default 100, max 500)
+    """
+    limit = min(limit, 500)
+    rows = audit_log.recent(limit=limit)
+    return AuditResponse(
+        entries=[AuditEntry(**row) for row in rows],
+        count=len(rows),
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
+
 from core.logger import get_logger
 from server.schemas import ToolDefinition
 
@@ -25,11 +26,13 @@ class ToolEntry:
     Combines a tool's MCP metadata with its Python handler.
 
     Attributes:
-        name:         Unique tool identifier used in API calls.
-        description:  Human/AI-readable description of what the tool does.
-        input_schema: JSON Schema object describing accepted parameters.
-        handler:      Callable that executes the tool logic.
-        tags:         Optional categorisation tags (e.g. ``["terraform", "iac"]``).
+        name:            Unique tool identifier used in API calls.
+        description:     Human/AI-readable description of what the tool does.
+        input_schema:    JSON Schema object describing accepted parameters.
+        handler:         Callable that executes the tool logic.
+        tags:            Optional categorisation tags (e.g. ``["terraform", "iac"]``).
+        timeout_seconds: Per-tool execution timeout override (0 = no timeout).
+                         When None the global TOOL_TIMEOUT_SECONDS setting is used.
     """
 
     name: str
@@ -37,6 +40,7 @@ class ToolEntry:
     input_schema: Dict[str, Any]
     handler: Callable[..., Any]
     tags: List[str] = field(default_factory=list)
+    timeout_seconds: Optional[int] = None
 
     def to_definition(self) -> ToolDefinition:
         """Return a serialisable ToolDefinition (no handler callable)."""
@@ -119,8 +123,8 @@ def build_registry() -> ToolRegistry:
     No other file needs to change.
     """
     from tools.terraform import apply, destroy, plan
-    from tools.github import create_pr, get_repo
-    from tools.aws import ec2, s3
+    from tools.github import create_pr, get_repo, list_issues, trigger_workflow, create_release
+    from tools.aws import ec2, s3, lambda_tools, rds
     from tools.kubernetes import (
         deploy,
         get_pods,
@@ -175,6 +179,27 @@ def build_registry() -> ToolRegistry:
         handler=get_repo.handler,
         tags=["github", "scm"],
     ))
+    registry.register(ToolEntry(
+        name=list_issues.TOOL_NAME,
+        description=list_issues.TOOL_DESCRIPTION,
+        input_schema=list_issues.TOOL_INPUT_SCHEMA,
+        handler=list_issues.handler,
+        tags=["github", "scm"],
+    ))
+    registry.register(ToolEntry(
+        name=trigger_workflow.TOOL_NAME,
+        description=trigger_workflow.TOOL_DESCRIPTION,
+        input_schema=trigger_workflow.TOOL_INPUT_SCHEMA,
+        handler=trigger_workflow.handler,
+        tags=["github", "scm", "ci"],
+    ))
+    registry.register(ToolEntry(
+        name=create_release.TOOL_NAME,
+        description=create_release.TOOL_DESCRIPTION,
+        input_schema=create_release.TOOL_INPUT_SCHEMA,
+        handler=create_release.handler,
+        tags=["github", "scm"],
+    ))
 
     # ── AWS ────────────────────────────────────────────────────────────────
     registry.register(ToolEntry(
@@ -204,6 +229,28 @@ def build_registry() -> ToolRegistry:
         input_schema=s3.LIST_TOOL_INPUT_SCHEMA,
         handler=s3.list_handler,
         tags=["aws", "s3", "storage"],
+    ))
+    registry.register(ToolEntry(
+        name=lambda_tools.TOOL_NAME,
+        description=lambda_tools.TOOL_DESCRIPTION,
+        input_schema=lambda_tools.TOOL_INPUT_SCHEMA,
+        handler=lambda_tools.handler,
+        tags=["aws", "lambda", "serverless"],
+    ))
+    registry.register(ToolEntry(
+        name=lambda_tools.INVOKE_TOOL_NAME,
+        description=lambda_tools.INVOKE_TOOL_DESCRIPTION,
+        input_schema=lambda_tools.INVOKE_TOOL_INPUT_SCHEMA,
+        handler=lambda_tools.invoke_handler,
+        tags=["aws", "lambda", "serverless"],
+        timeout_seconds=300,  # Lambda max timeout is 15 min; we cap at 5
+    ))
+    registry.register(ToolEntry(
+        name=rds.TOOL_NAME,
+        description=rds.TOOL_DESCRIPTION,
+        input_schema=rds.TOOL_INPUT_SCHEMA,
+        handler=rds.handler,
+        tags=["aws", "rds", "database"],
     ))
 
     # ── Kubernetes ─────────────────────────────────────────────────────────

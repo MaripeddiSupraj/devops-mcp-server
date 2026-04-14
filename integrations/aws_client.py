@@ -207,3 +207,122 @@ class S3Client:
 
         log.info("s3_bucket_created", bucket=bucket_name, region=effective_region)
         return {"bucket": bucket_name, "region": effective_region, "public_access": "blocked"}
+
+
+class LambdaClient:
+    """Lambda operations used by MCP tool handlers."""
+
+    def __init__(self) -> None:
+        self._lambda = _session().client("lambda")
+
+    def list_functions(self, max_items: int = 50) -> List[Dict[str, Any]]:
+        """Return a list of Lambda functions in the account/region."""
+        try:
+            resp = self._lambda.list_functions(MaxItems=max_items)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"list_functions failed: {exc}") from exc
+
+        return [
+            {
+                "name": fn["FunctionName"],
+                "runtime": fn.get("Runtime", "unknown"),
+                "handler": fn.get("Handler"),
+                "memory_mb": fn.get("MemorySize"),
+                "timeout_s": fn.get("Timeout"),
+                "last_modified": fn.get("LastModified"),
+                "description": fn.get("Description", ""),
+            }
+            for fn in resp.get("Functions", [])
+        ]
+
+    def invoke(
+        self,
+        function_name: str,
+        payload: Optional[Dict[str, Any]] = None,
+        invocation_type: str = "RequestResponse",
+    ) -> Dict[str, Any]:
+        """
+        Invoke a Lambda function synchronously or asynchronously.
+
+        Args:
+            function_name:   Function name or ARN.
+            payload:         JSON-serialisable dict passed as event (optional).
+            invocation_type: "RequestResponse" (sync) | "Event" (async) | "DryRun".
+
+        Returns:
+            Dict with status_code, executed_version, response_payload, log_result.
+        """
+        import base64
+
+        kwargs: Dict[str, Any] = {
+            "FunctionName": function_name,
+            "InvocationType": invocation_type,
+        }
+        if payload:
+            import json as _json
+            kwargs["Payload"] = _json.dumps(payload).encode()
+
+        try:
+            resp = self._lambda.invoke(**kwargs)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"lambda invoke failed: {exc}") from exc
+
+        result: Dict[str, Any] = {
+            "status_code": resp.get("StatusCode"),
+            "executed_version": resp.get("ExecutedVersion", "$LATEST"),
+            "function_error": resp.get("FunctionError"),
+        }
+
+        if "Payload" in resp:
+            try:
+                result["response_payload"] = resp["Payload"].read().decode("utf-8")
+            except Exception:
+                result["response_payload"] = None
+
+        log_b64 = resp.get("LogResult")
+        if log_b64:
+            try:
+                result["log_tail"] = base64.b64decode(log_b64).decode("utf-8")
+            except Exception:
+                result["log_tail"] = None
+
+        log.info("lambda_invoked", function=function_name, status=result["status_code"])
+        return result
+
+
+class RDSClient:
+    """RDS operations used by MCP tool handlers."""
+
+    def __init__(self) -> None:
+        self._rds = _session().client("rds")
+
+    def list_instances(self, db_instance_identifier: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Describe RDS DB instances.
+
+        Args:
+            db_instance_identifier: Optional specific instance to describe.
+        """
+        kwargs: Dict[str, Any] = {}
+        if db_instance_identifier:
+            kwargs["DBInstanceIdentifier"] = db_instance_identifier
+
+        try:
+            resp = self._rds.describe_db_instances(**kwargs)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"describe_db_instances failed: {exc}") from exc
+
+        return [
+            {
+                "identifier": db["DBInstanceIdentifier"],
+                "engine": db.get("Engine"),
+                "engine_version": db.get("EngineVersion"),
+                "status": db.get("DBInstanceStatus"),
+                "instance_class": db.get("DBInstanceClass"),
+                "endpoint": db.get("Endpoint", {}).get("Address"),
+                "port": db.get("Endpoint", {}).get("Port"),
+                "multi_az": db.get("MultiAZ"),
+                "storage_gb": db.get("AllocatedStorage"),
+            }
+            for db in resp.get("DBInstances", [])
+        ]

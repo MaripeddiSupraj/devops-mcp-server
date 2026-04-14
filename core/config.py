@@ -77,6 +77,27 @@ class Settings(BaseSettings):
         ),
     )
 
+    # ── Slack ────────────────────────────────────────────────────────────────
+    slack_webhook_url: Optional[str] = Field(
+        default=None,
+        env="SLACK_WEBHOOK_URL",
+        description="Slack incoming webhook URL. When set, tool success/failure notifications are posted.",
+    )
+
+    # ── Audit ────────────────────────────────────────────────────────────────
+    audit_db_path: str = Field(
+        default="audit.db",
+        env="AUDIT_DB_PATH",
+        description="Path to SQLite audit log database.",
+    )
+
+    # ── Tool execution ───────────────────────────────────────────────────────
+    default_tool_timeout_seconds: int = Field(
+        default=120,
+        env="TOOL_TIMEOUT_SECONDS",
+        description="Default per-tool execution timeout in seconds. 0 = no timeout.",
+    )
+
     def cors_origins_list(self) -> list[str]:
         """Return CORS_ORIGINS parsed into a list."""
         if self.cors_origins.strip() == "*":

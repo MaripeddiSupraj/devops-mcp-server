@@ -110,9 +110,7 @@ class GitHubClient:
             ) from exc
 
     def get_repo_info(self, repo_full_name: str) -> dict:
-        """
-        Return a trimmed info dict for a repository.
-        """
+        """Return a trimmed info dict for a repository."""
         repo = self.get_repo(repo_full_name)
         return {
             "name": repo.name,
@@ -126,3 +124,136 @@ class GitHubClient:
             "private": repo.private,
             "language": repo.language,
         }
+
+    def list_issues(
+        self,
+        repo_full_name: str,
+        state: str = "open",
+        label: Optional[str] = None,
+        limit: int = 30,
+    ) -> list:
+        """
+        List issues in a repository.
+
+        Args:
+            repo_full_name: ``owner/repo`` string.
+            state:          ``open``, ``closed``, or ``all``.
+            label:          Filter by label name (optional).
+            limit:          Maximum number of issues to return.
+        """
+        repo = self.get_repo(repo_full_name)
+        try:
+            kwargs: dict = {"state": state}
+            if label:
+                kwargs["labels"] = [label]
+            issues_paged = repo.get_issues(**kwargs)
+            issues = []
+            for issue in issues_paged[:limit]:
+                # Skip pull requests (GitHub API returns PRs as issues too)
+                if issue.pull_request:
+                    continue
+                issues.append({
+                    "number": issue.number,
+                    "title": issue.title,
+                    "state": issue.state,
+                    "url": issue.html_url,
+                    "author": issue.user.login if issue.user else None,
+                    "labels": [lb.name for lb in issue.labels],
+                    "created_at": issue.created_at.isoformat() if issue.created_at else None,
+                    "updated_at": issue.updated_at.isoformat() if issue.updated_at else None,
+                    "comments": issue.comments,
+                })
+            return issues
+        except GithubException as exc:
+            raise GitHubClientError(
+                f"Failed to list issues in '{repo_full_name}': {exc.data}"
+            ) from exc
+
+    def trigger_workflow(
+        self,
+        repo_full_name: str,
+        workflow_id: str,
+        ref: str = "main",
+        inputs: Optional[dict] = None,
+    ) -> dict:
+        """
+        Trigger a GitHub Actions workflow dispatch event.
+
+        Args:
+            repo_full_name: ``owner/repo`` string.
+            workflow_id:    Workflow file name (e.g. ``ci.yml``) or numeric ID.
+            ref:            Branch or tag to run the workflow on.
+            inputs:         Optional workflow_dispatch inputs dict.
+
+        Returns:
+            Dict confirming the dispatch was accepted.
+        """
+        repo = self.get_repo(repo_full_name)
+        try:
+            workflow = repo.get_workflow(workflow_id)
+            success = workflow.create_dispatch(ref=ref, inputs=inputs or {})
+            if not success:
+                raise GitHubClientError(
+                    f"Workflow dispatch returned false for '{workflow_id}' on '{ref}'"
+                )
+            log.info("github_workflow_triggered", repo=repo_full_name, workflow=workflow_id, ref=ref)
+            return {
+                "dispatched": True,
+                "repo": repo_full_name,
+                "workflow": workflow_id,
+                "ref": ref,
+                "inputs": inputs or {},
+            }
+        except GithubException as exc:
+            raise GitHubClientError(
+                f"Failed to trigger workflow '{workflow_id}': {exc.data}"
+            ) from exc
+
+    def create_release(
+        self,
+        repo_full_name: str,
+        tag_name: str,
+        name: str,
+        body: str = "",
+        draft: bool = False,
+        prerelease: bool = False,
+        target_commitish: str = "main",
+    ) -> dict:
+        """
+        Create a GitHub release.
+
+        Args:
+            repo_full_name:    ``owner/repo`` string.
+            tag_name:          Tag to create (e.g. ``v1.2.3``).
+            name:              Release title.
+            body:              Release notes (Markdown).
+            draft:             Publish as draft.
+            prerelease:        Mark as pre-release.
+            target_commitish:  Branch or commit SHA for the tag.
+
+        Returns:
+            Dict with release ``id``, ``url``, ``tag``, ``name``.
+        """
+        repo = self.get_repo(repo_full_name)
+        try:
+            release = repo.create_git_release(
+                tag=tag_name,
+                name=name,
+                message=body,
+                draft=draft,
+                prerelease=prerelease,
+                target_commitish=target_commitish,
+            )
+            log.info("github_release_created", repo=repo_full_name, tag=tag_name, url=release.html_url)
+            return {
+                "id": release.id,
+                "tag": tag_name,
+                "name": release.title,
+                "url": release.html_url,
+                "draft": draft,
+                "prerelease": prerelease,
+            }
+        except GithubException as exc:
+            raise GitHubClientError(
+                f"Failed to create release '{tag_name}' in '{repo_full_name}': {exc.data}"
+            ) from exc

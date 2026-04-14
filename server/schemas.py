@@ -96,6 +96,23 @@ class ToolListResponse(BaseModel):
     count: int
 
 
+# ── Audit ─────────────────────────────────────────────────────────────────────
+
+class AuditEntry(BaseModel):
+    id: int
+    ts: str
+    tool_name: str
+    status: str
+    duration_ms: int
+    api_key_hint: str
+    error: Optional[str] = None
+
+
+class AuditResponse(BaseModel):
+    entries: List[AuditEntry]
+    count: int
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 class HealthResponse(BaseModel):
