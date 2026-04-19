@@ -157,6 +157,19 @@ devops-mcp-server/
 
 ## Quick Start
 
+There are two ways to use this server — pick the one that fits your use case:
+
+| Mode | Best for |
+| --- | --- |
+| [Claude Desktop (stdio)](#option-a--claude-desktop-stdio) | Chatting with Claude directly — ask it to deploy, debug, scale |
+| [HTTP server](#option-b--http-server) | AI agents (LangGraph, AutoGen) calling tools over HTTP |
+
+---
+
+## Option A — Claude Desktop (stdio)
+
+The fastest way to start. Claude Desktop launches the server as a subprocess and talks to it directly — no ports, no auth needed.
+
 ### 1. Clone and install
 
 ```bash
@@ -164,12 +177,82 @@ git clone https://github.com/maripeddisupraj/devops-mcp-server.git
 cd devops-mcp-server
 
 python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure credentials
+### 2. Find your Python path
+
+```bash
+which python3   # e.g. /Users/yourname/devops-mcp-server/.venv/bin/python3
+```
+
+### 3. Edit Claude Desktop config
+
+Open (create if missing):
+
+```text
+~/Library/Application Support/Claude/claude_desktop_config.json   # macOS
+%APPDATA%\Claude\claude_desktop_config.json                        # Windows
+```
+
+Add this block — replace the paths and credentials:
+
+```json
+{
+  "mcpServers": {
+    "devops-mcp": {
+      "command": "/Users/yourname/devops-mcp-server/.venv/bin/python3",
+      "args": ["-m", "server.mcp_stdio"],
+      "cwd": "/Users/yourname/devops-mcp-server",
+      "env": {
+        "GITHUB_TOKEN": "ghp_xxxxxxxxxxxxxxxxxxxx",
+        "AWS_ACCESS_KEY_ID": "AKIAIOSFODNN7EXAMPLE",
+        "AWS_SECRET_ACCESS_KEY": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "AWS_REGION": "us-east-1",
+        "KUBECONFIG": "/Users/yourname/.kube/config",
+        "TERRAFORM_ALLOWED_BASE_DIR": "/tmp/terraform"
+      }
+    }
+  }
+}
+```
+
+> Only fill in credentials for the services you actually use. Missing credentials produce a warning but don't stop the server.
+
+### 4. Restart Claude Desktop
+
+Quit and reopen. You should see a tools icon (🔧) in the chat input bar — click it to confirm all 26 tools are listed.
+
+### 5. Try it
+
+Ask Claude:
+
+> *"List all pods in my kubernetes cluster"*
+> *"Create a PR from branch feature/auth to main in myorg/myapp"*
+> *"Run terraform plan on /tmp/terraform/vpc"*
+> *"List my running EC2 instances"*
+
+Claude will call the right tool automatically, show you the result, and ask before taking any destructive action.
+
+---
+
+## Option B — HTTP Server
+
+For AI agents (LangGraph, AutoGen, custom) that need to call tools over HTTP.
+
+### B1. Clone and install
+
+```bash
+git clone https://github.com/maripeddisupraj/devops-mcp-server.git
+cd devops-mcp-server
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### B2. Configure credentials
 
 ```bash
 cp .env.example .env
@@ -184,25 +267,36 @@ AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 AWS_REGION=us-east-1
 KUBECONFIG=/Users/yourname/.kube/config
 TERRAFORM_ALLOWED_BASE_DIR=/tmp/terraform
+MCP_API_KEY=your-secret-key          # optional — enables auth on all endpoints
 ```
 
-### 3. Start the server
+### B3. Start the server
 
 ```bash
 python -m server.main
 ```
 
-### 4. Verify it's running
+### B4. Verify it's running
 
 ```bash
-curl http://localhost:8000/health
-# {"status":"ok","version":"2.0.0","tools_registered":26}
+curl http://localhost:8000/health/ready
+# {"status":"ok","version":"2.0.0","tools_registered":26,"warnings":[],"environment":"development"}
 ```
 
-### 5. List all tools
+### B5. Call a tool
+
+```bash
+curl -s -X POST http://localhost:8000/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name": "k8s_get_pods", "inputs": {"namespace": "default"}}' \
+  | python -m json.tool
+```
+
+### B6. Browse all tools
 
 ```bash
 curl http://localhost:8000/tools | python -m json.tool
+# or open http://localhost:8000/docs in a browser for interactive Swagger UI
 ```
 
 ---
