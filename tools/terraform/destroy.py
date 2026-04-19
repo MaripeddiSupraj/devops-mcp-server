@@ -56,18 +56,16 @@ def handler(path: str, confirm_destroy: str, auto_approve: bool = False) -> Dict
     """
     if confirm_destroy != "DESTROY":
         return {
-            "stdout": "",
-            "stderr": "Destroy confirmation failed. Pass confirm_destroy='DESTROY' to proceed.",
+            "status": "blocked",
+            "reason": "Destroy confirmation failed. Pass confirm_destroy='DESTROY' to proceed.",
             "exit_code": -1,
-            "blocked": True,
         }
 
     if get_settings().dry_run:
         return {
-            "stdout": "",
-            "stderr": "Server is in DRY_RUN mode. terraform_destroy is disabled.",
+            "status": "blocked",
+            "reason": "Server is in DRY_RUN mode. terraform_destroy is disabled.",
             "exit_code": -1,
-            "blocked": True,
         }
 
     log.warning("terraform_destroy_executing", path=path)

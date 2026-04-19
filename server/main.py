@@ -30,8 +30,10 @@ Production features
 
 import asyncio
 import uuid
+from contextlib import asynccontextmanager
 from typing import List, Optional
 
+import structlog
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,12 +44,13 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from core.config import get_settings
+from core.executor import InputValidationError, ToolNotFoundError
 from core.executor import ToolExecutor
 from core.logger import get_logger
 from core.security import verify_api_key
 from core.startup import collect_startup_warnings
 from core.audit import audit_log
-from server.jobs import JobStore, job_store, run_job
+from server.jobs import JobStore, job_store, run_job, start_cleanup_task
 from server.registry import build_registry
 from server.schemas import (
     AuditEntry,
@@ -74,6 +77,14 @@ registry = build_registry()
 executor = ToolExecutor(registry)
 _startup_warnings = collect_startup_warnings(settings)
 
+# ── Lifespan ───────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = start_cleanup_task()
+    yield
+    task.cancel()
+
 # ── Rate limiter ──────────────────────────────────────────────────────────────
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
@@ -81,6 +92,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 
 app = FastAPI(
+    lifespan=lifespan,
     title="DevOps MCP Server",
     description=(
         "**Production-grade** Model Context Protocol server exposing DevOps automation tools "
@@ -126,7 +138,6 @@ async def request_id_middleware(request: Request, call_next):
     Injects into structlog context so all log lines carry the same request_id.
     Echoes back in X-Request-ID response header.
     """
-    import structlog
     request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
     structlog.contextvars.clear_contextvars()
     structlog.contextvars.bind_contextvars(request_id=request_id)
@@ -179,23 +190,23 @@ async def liveness() -> dict:
 )
 async def readiness() -> HealthResponse:
     """
-    Kubernetes readiness probe — returns 200 when the server is ready to
-    serve traffic. Returns 503 if critical configuration is missing.
+    Kubernetes readiness probe.
 
-    The ``warnings`` field lists non-fatal issues (e.g. missing credentials).
+    - **200 ok**       All credentials configured, all tools available.
+    - **200 degraded** Some integrations are unconfigured (advisory warnings).
+                       The pod still receives traffic — tools for other
+                       integrations work fine.
+    - **503**          No tools registered (server is fundamentally broken).
     """
-    # Any missing-cred warning degrades readiness but doesn't kill the server
-    status_code = 503 if _startup_warnings else 200
+    no_tools = len(registry) == 0
     response = HealthResponse(
+        status="degraded" if _startup_warnings else "ok",
         tools_registered=len(registry),
         warnings=_startup_warnings,
         environment=settings.environment,
     )
-    if status_code == 503:
-        return JSONResponse(
-            status_code=503,
-            content=response.model_dump(),
-        )
+    if no_tools:
+        return JSONResponse(status_code=503, content=response.model_dump())
     return response
 
 
@@ -273,7 +284,6 @@ async def execute_tool(
     - **404** tool not found
     - **429** rate limit exceeded
     """
-    import structlog
     request_id = structlog.contextvars.get_contextvars().get("request_id")
     log.info("execute_request", tool=body.tool_name, inputs=body.inputs)
 
@@ -284,7 +294,6 @@ async def execute_tool(
     )
     api_key_hint = (raw_key[:8] + "…") if raw_key else "anonymous"
 
-    from core.executor import InputValidationError, ToolNotFoundError
     try:
         response = executor.execute(body.tool_name, body.inputs, api_key_hint=api_key_hint)
     except ToolNotFoundError as exc:
@@ -319,7 +328,6 @@ async def execute_batch(
     Rate-limited to **20 batch requests / minute per IP**.
     Individual call failures do NOT abort the batch — all results always returned.
     """
-    import structlog
     request_id = structlog.contextvars.get_contextvars().get("request_id")
 
     if len(body.calls) > 20:
@@ -330,16 +338,23 @@ async def execute_batch(
 
     log.info("batch_execute_request", count=len(body.calls))
 
-    results: list[BatchToolResult] = []
-    for call in body.calls:
-        resp = executor.execute_safe(call.tool_name, call.inputs)
-        results.append(BatchToolResult(
+    loop = asyncio.get_event_loop()
+
+    async def _run_one(call):
+        resp = await loop.run_in_executor(
+            None, lambda: executor.execute_safe(call.tool_name, call.inputs)
+        )
+        return BatchToolResult(
             call_id=call.call_id,
             tool_name=call.tool_name,
             status=resp.status,
             data=resp.data,
             error=resp.error,
-        ))
+        )
+
+    results: list[BatchToolResult] = await asyncio.gather(
+        *[_run_one(call) for call in body.calls]
+    )
 
     succeeded = sum(1 for r in results if r.status == "success")
     return BatchExecuteResponse(
@@ -360,9 +375,12 @@ async def execute_batch(
         202: {"description": "Job accepted, poll /jobs/{job_id} for status"},
         401: {"description": "Missing API key"},
         403: {"description": "Invalid API key"},
+        429: {"description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("30/minute")
 async def execute_async(
+    request: Request,
     body: SubmitJobRequest,
     _auth: None = Depends(verify_api_key),
 ) -> SubmitJobResponse:
@@ -388,9 +406,14 @@ async def execute_async(
     "/jobs/{job_id}",
     response_model=JobResponse,
     tags=["Jobs"],
-    responses={404: {"description": "Job not found"}},
+    responses={
+        404: {"description": "Job not found"},
+        429: {"description": "Rate limit exceeded"},
+    },
 )
+@limiter.limit("120/minute")
 async def get_job(
+    request: Request,
     job_id: str,
     _auth: None = Depends(verify_api_key),
 ) -> JobResponse:
@@ -418,9 +441,12 @@ async def get_job(
     responses={
         401: {"description": "Missing API key"},
         403: {"description": "Invalid API key"},
+        429: {"description": "Rate limit exceeded"},
     },
 )
+@limiter.limit("30/minute")
 async def get_audit_log(
+    request: Request,
     limit: int = 100,
     _auth: None = Depends(verify_api_key),
 ) -> AuditResponse:

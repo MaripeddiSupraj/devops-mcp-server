@@ -24,7 +24,7 @@ class TestHealthProbes:
         assert r.status_code in (200, 503)
         body = r.json()
         assert "warnings" in body
-        assert body["tools_registered"] == 20
+        assert body["tools_registered"] == 26
 
     def test_legacy_health_alias(self, client):
         r = client.get("/health")
@@ -38,8 +38,8 @@ class TestToolsEndpoints:
         r = client.get("/tools")
         assert r.status_code == 200
         body = r.json()
-        assert body["count"] == 20
-        assert len(body["tools"]) == 20
+        assert body["count"] == 26
+        assert len(body["tools"]) == 26
 
     def test_filter_by_tag_kubernetes(self, client):
         r = client.get("/tools?tag=kubernetes")

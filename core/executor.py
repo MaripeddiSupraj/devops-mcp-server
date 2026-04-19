@@ -98,7 +98,6 @@ class ToolExecutor:
                     api_key_hint=api_key_hint,
                     inputs=inputs,
                 )
-                slack_notify.tool_success(tool_name, inputs, duration_ms)
 
                 response = ToolResponse(status="success", data=result)
 
@@ -193,12 +192,23 @@ class ToolExecutor:
 
     @staticmethod
     def _run_with_timeout(tool_def: Any, inputs: Dict[str, Any], timeout: Optional[int]) -> Any:
-        """Submit the tool handler to the thread pool with an optional timeout."""
+        """Submit the tool handler to the thread pool with an optional timeout.
+
+        NOTE: future.cancel() cannot stop a thread that is already running —
+        Python threads are not interruptible. The future is abandoned (its result
+        is ignored) but the underlying thread continues until the tool finishes or
+        the process exits. For subprocess-based tools (Terraform) the subprocess
+        itself will be killed by the OS when the timeout is hit at the subprocess
+        layer (see TerraformRunner._run → subprocess.run(timeout=...)), so the
+        effective cancellation happens there, not here.
+        """
         future = _executor_pool.submit(tool_def.handler, **inputs)
         try:
             return future.result(timeout=timeout)
         except FuturesTimeoutError:
-            future.cancel()
+            # Do not call future.cancel() — it is a no-op for running threads and
+            # misleadingly implies the work stopped. We simply stop waiting.
             raise ToolTimeoutError(
-                f"Tool '{tool_def.name}' exceeded its {timeout}s timeout and was cancelled."
+                f"Tool '{tool_def.name}' exceeded its {timeout}s timeout. "
+                "The underlying operation may still be running to completion."
             )

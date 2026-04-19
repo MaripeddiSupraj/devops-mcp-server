@@ -5,10 +5,10 @@ In-memory async background job store for long-running tool executions.
 
 Design:
 - Each job gets a UUID. The caller polls GET /jobs/{job_id} for status.
-- Jobs are stored in a thread-safe dict with a TTL-based cleanup task.
+- A background asyncio task sweeps expired jobs every CLEANUP_INTERVAL_SECONDS.
 - Workers run in FastAPI's default thread pool (run_in_executor) so
   blocking tool handlers (Terraform, kubectl) don't stall the event loop.
-- Job history is capped at MAX_JOBS to prevent unbounded memory growth.
+- Job history is capped at MAX_JOBS as a hard safety ceiling.
 
 States: pending → running → success | error
 """
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
 from core.logger import get_logger
@@ -25,7 +25,8 @@ from core.logger import get_logger
 log = get_logger(__name__)
 
 MAX_JOBS = 500
-JOB_TTL_SECONDS = 3600  # 1 hour
+JOB_TTL_SECONDS = 3600       # 1 hour
+CLEANUP_INTERVAL_SECONDS = 300  # sweep every 5 minutes
 
 
 class Job:
@@ -82,6 +83,26 @@ class JobStore:
 
 # Singleton store — imported by main.py
 job_store = JobStore()
+
+
+async def _cleanup_loop() -> None:
+    """Periodically evict jobs older than JOB_TTL_SECONDS."""
+    while True:
+        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=JOB_TTL_SECONDS)
+        expired = [
+            jid for jid, job in list(job_store._jobs.items())
+            if job.created_at < cutoff
+        ]
+        for jid in expired:
+            del job_store._jobs[jid]
+        if expired:
+            log.info("jobs_evicted_ttl", count=len(expired))
+
+
+def start_cleanup_task() -> asyncio.Task:
+    """Schedule the TTL cleanup loop. Call once from the FastAPI lifespan."""
+    return asyncio.create_task(_cleanup_loop())
 
 
 async def run_job(job: Job, executor_fn) -> None:

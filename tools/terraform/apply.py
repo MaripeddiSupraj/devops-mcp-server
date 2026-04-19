@@ -59,10 +59,9 @@ def handler(path: str, auto_approve: bool = False) -> Dict[str, Any]:
     if settings.dry_run:
         log.warning("terraform_apply_blocked_dry_run", path=path)
         return {
-            "stdout": "",
-            "stderr": "Server is running in DRY_RUN mode. terraform_apply is disabled.",
+            "status": "blocked",
+            "reason": "Server is running in DRY_RUN mode. terraform_apply is disabled.",
             "exit_code": -1,
-            "blocked": True,
         }
 
     runner = TerraformRunner()

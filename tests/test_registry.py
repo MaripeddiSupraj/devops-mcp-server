@@ -71,11 +71,17 @@ class TestBuildRegistry:
             # GitHub
             "github_create_pull_request",
             "github_get_repo",
+            "github_list_issues",
+            "github_trigger_workflow",
+            "github_create_release",
             # AWS
             "aws_create_ec2_instance",
             "aws_list_ec2_instances",
             "aws_create_s3_bucket",
             "aws_list_s3_buckets",
+            "aws_list_lambda_functions",
+            "aws_invoke_lambda",
+            "aws_list_rds_instances",
             # Kubernetes — core
             "k8s_deploy",
             "k8s_get_pods",

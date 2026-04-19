@@ -162,24 +162,28 @@ class TestScaleDeployment:
     def test_scale_calls_patch_api(self, _cfg):
         mock_apps = MagicMock()
         dep = _make_deployment(desired=5, ready=5)
-        mock_apps.patch_namespaced_deployment_scale.return_value = dep
+        dep.spec.replicas = 5
+        mock_apps.read_namespaced_deployment.return_value = dep
+        mock_apps.patch_namespaced_deployment.return_value = dep
         patcher, _ = _k8s_client_ctx(apps=mock_apps)
         with patcher:
             from integrations.k8s_client import KubernetesClient
-            result = KubernetesClient().scale_deployment("web", "default", replicas=5)
-        mock_apps.patch_namespaced_deployment_scale.assert_called_once()
-        assert result["replicas"] == 5
+            result = KubernetesClient().scale_deployment("web", replicas=5, namespace="default")
+        mock_apps.patch_namespaced_deployment.assert_called_once()
+        assert result["new_replicas"] == 5
 
     @patch("integrations.k8s_client._get_k8s_config")
     def test_scale_to_zero(self, _cfg):
         mock_apps = MagicMock()
         dep = _make_deployment(desired=0, ready=0)
-        mock_apps.patch_namespaced_deployment_scale.return_value = dep
+        dep.spec.replicas = 0
+        mock_apps.read_namespaced_deployment.return_value = dep
+        mock_apps.patch_namespaced_deployment.return_value = dep
         patcher, _ = _k8s_client_ctx(apps=mock_apps)
         with patcher:
             from integrations.k8s_client import KubernetesClient
-            KubernetesClient().scale_deployment("web", "default", replicas=0)
-        call_body = mock_apps.patch_namespaced_deployment_scale.call_args[1]["body"]
+            KubernetesClient().scale_deployment("web", replicas=0, namespace="default")
+        call_body = mock_apps.patch_namespaced_deployment.call_args[1]["body"]
         assert call_body["spec"]["replicas"] == 0
 
 
@@ -194,7 +198,7 @@ class TestGetLogs:
         with patcher:
             from integrations.k8s_client import KubernetesClient
             result = KubernetesClient().get_logs("web-pod", "default", tail_lines=100)
-        assert "server started" in result["logs"]
+        assert "server started" in result["log"]
 
     @patch("integrations.k8s_client._get_k8s_config")
     def test_tail_lines_forwarded(self, _cfg):
@@ -219,7 +223,7 @@ class TestDeletePod:
             from integrations.k8s_client import KubernetesClient
             result = KubernetesClient().delete_pod("web-pod-abc", "default")
         mock_core.delete_namespaced_pod.assert_called_once()
-        assert result["deleted"] == "web-pod-abc"
+        assert result["pod"] == "web-pod-abc"
 
 
 # ── k8s_get_deployments ───────────────────────────────────────────────────────
@@ -237,5 +241,5 @@ class TestGetDeployments:
             result = KubernetesClient().get_deployments("default")
         assert len(result) == 1
         assert result[0]["name"] == "web"
-        assert result[0]["desired"] == 3
+        assert result[0]["replicas"] == 3
         assert result[0]["ready"] == 3

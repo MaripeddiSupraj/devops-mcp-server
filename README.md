@@ -78,6 +78,7 @@ The agent calls one endpoint with a tool name and JSON inputs. The server handle
 ```
 
 **Request lifecycle:**
+
 1. Agent sends `POST /tools/execute` with `tool_name` and `inputs`
 2. `ToolExecutor` validates inputs against the tool's JSON schema
 3. Handler function is resolved from `ToolRegistry`
@@ -89,11 +90,13 @@ The agent calls one endpoint with a tool name and JSON inputs. The server handle
 ## Project Structure
 
 ```text
-devops_mcp/
+devops-mcp-server/
 │
 ├── server/
 │   ├── main.py          # FastAPI app — all HTTP routes
+│   ├── mcp_stdio.py     # MCP stdio transport for Claude Desktop
 │   ├── registry.py      # Tool registration + build_registry()
+│   ├── jobs.py          # Background job store + TTL cleanup
 │   └── schemas.py       # Pydantic models for request/response
 │
 ├── tools/               # One file per tool (metadata + handler)
@@ -103,10 +106,15 @@ devops_mcp/
 │   │   └── destroy.py
 │   ├── github/
 │   │   ├── create_pr.py
-│   │   └── get_repo.py
+│   │   ├── get_repo.py
+│   │   ├── list_issues.py
+│   │   ├── trigger_workflow.py
+│   │   └── create_release.py
 │   ├── aws/
 │   │   ├── ec2.py
-│   │   └── s3.py
+│   │   ├── s3.py
+│   │   ├── lambda_tools.py
+│   │   └── rds.py
 │   └── kubernetes/
 │       ├── deploy.py
 │       ├── get_pods.py
@@ -123,26 +131,26 @@ devops_mcp/
 ├── core/
 │   ├── config.py        # Pydantic-settings (env vars)
 │   ├── logger.py        # Structured JSON logging (structlog)
+│   ├── audit.py         # SQLite audit log
 │   ├── auth.py          # Credential helpers
-│   └── executor.py      # Schema validation + execution engine
+│   ├── executor.py      # Schema validation + execution engine
+│   └── startup.py       # Startup credential checks
 │
 ├── integrations/
 │   ├── terraform_runner.py  # subprocess wrapper (no shell=True)
 │   ├── github_client.py     # PyGithub wrapper
-│   ├── aws_client.py        # boto3 EC2 + S3
-│   └── k8s_client.py        # kubernetes-client wrapper
+│   ├── aws_client.py        # boto3 EC2/S3/Lambda/RDS
+│   ├── k8s_client.py        # kubernetes-client wrapper
+│   └── slack_client.py      # Slack webhook notifications
 │
-├── tests/
-│   ├── conftest.py
-│   ├── test_registry.py
-│   ├── test_executor.py
-│   ├── test_api.py
-│   └── test_terraform_runner.py
-│
+├── tests/               # 152 tests, no live service calls
+├── infra/               # Prometheus + Grafana configs
 ├── .env.example
 ├── Dockerfile
+├── docker-compose.yml
 ├── requirements.txt
-└── README.md
+├── CONTRIBUTING.md
+└── SECURITY.md
 ```
 
 ---
@@ -152,8 +160,8 @@ devops_mcp/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/devops-mcp-server.git
-cd devops_mcp
+git clone https://github.com/maripeddisupraj/devops-mcp-server.git
+cd devops-mcp-server
 
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
@@ -188,7 +196,7 @@ python -m server.main
 
 ```bash
 curl http://localhost:8000/health
-# {"status":"ok","version":"1.0.0","tools_registered":20}
+# {"status":"ok","version":"2.0.0","tools_registered":26}
 ```
 
 ### 5. List all tools
@@ -227,11 +235,13 @@ All configuration is via environment variables (or `.env` file).
 python -m server.main
 ```
 
-### Production (multi-worker)
+### Production (single worker)
 
 ```bash
-uvicorn server.main:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
+
+> **Multi-worker limitation:** the job store is in-memory and the audit log uses SQLite. Running `--workers N` (multiple processes) means each worker has its own isolated job store — a job submitted to worker A is invisible to worker B. For horizontal scaling, run multiple single-worker containers behind a load balancer with sticky sessions, or replace the job store and audit log with a shared backend (Redis + PostgreSQL).
 
 ### Interactive API docs
 
@@ -287,8 +297,8 @@ curl http://localhost:8000/health
 ```json
 {
   "status": "ok",
-  "version": "1.0.0",
-  "tools_registered": 20
+  "version": "2.0.0",
+  "tools_registered": 26
 }
 ```
 
@@ -304,7 +314,7 @@ curl http://localhost:8000/tools
 
 ```json
 {
-  "count": 20,
+  "count": 26,
   "tools": [
     {
       "name": "terraform_plan",
@@ -551,6 +561,82 @@ curl -s -X POST http://localhost:8000/tools/execute \
 
 ---
 
+#### `github_list_issues`
+
+Lists issues in a repository. Pull requests are excluded automatically.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `repo` | string | Yes | — | `owner/repo` format |
+| `state` | string | No | `open` | `open`, `closed`, or `all` |
+| `label` | string | No | — | Filter by label name |
+| `limit` | integer | No | `30` | Max results (1–100) |
+
+```bash
+curl -s -X POST http://localhost:8000/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name": "github_list_issues", "inputs": {"repo": "myorg/myapp", "state": "open", "label": "bug"}}'
+```
+
+---
+
+#### `github_trigger_workflow`
+
+Triggers a GitHub Actions workflow via `workflow_dispatch`. Requires a token with `workflow` scope.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `repo` | string | Yes | — | `owner/repo` format |
+| `workflow_id` | string | Yes | — | Filename (e.g. `ci.yml`) or numeric ID |
+| `ref` | string | No | `main` | Branch or tag to run on |
+| `inputs` | object | No | — | `workflow_dispatch` input parameters |
+
+```bash
+curl -s -X POST http://localhost:8000/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool_name": "github_trigger_workflow",
+    "inputs": {
+      "repo": "myorg/myapp",
+      "workflow_id": "deploy.yml",
+      "ref": "main",
+      "inputs": {"environment": "production"}
+    }
+  }'
+```
+
+---
+
+#### `github_create_release`
+
+Creates a GitHub release with a tag, title, and release notes.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `repo` | string | Yes | — | `owner/repo` format |
+| `tag_name` | string | Yes | — | Tag to create (e.g. `v1.2.3`) |
+| `name` | string | Yes | — | Release title |
+| `body` | string | No | `""` | Release notes (Markdown) |
+| `draft` | boolean | No | `false` | Publish as draft |
+| `prerelease` | boolean | No | `false` | Mark as pre-release |
+| `target_commitish` | string | No | `main` | Branch or SHA for the tag |
+
+```bash
+curl -s -X POST http://localhost:8000/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool_name": "github_create_release",
+    "inputs": {
+      "repo": "myorg/myapp",
+      "tag_name": "v2.4.1",
+      "name": "v2.4.1 — Redis caching",
+      "body": "## What'\''s new\n- Redis cache-aside pattern\n- 40% latency reduction"
+    }
+  }'
+```
+
+---
+
 ### AWS Tools
 
 #### `aws_create_ec2_instance`
@@ -657,6 +743,65 @@ Lists all S3 buckets in the account. No inputs required.
 curl -s -X POST http://localhost:8000/tools/execute \
   -H "Content-Type: application/json" \
   -d '{"tool_name": "aws_list_s3_buckets", "inputs": {}}'
+```
+
+---
+
+#### `aws_list_lambda_functions`
+
+Lists all Lambda functions in the configured region.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `max_items` | integer | No | `50` | Max results (1–100) |
+
+```bash
+curl -s -X POST http://localhost:8000/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name": "aws_list_lambda_functions", "inputs": {"max_items": 20}}'
+```
+
+---
+
+#### `aws_invoke_lambda`
+
+Invokes a Lambda function synchronously or asynchronously. Returns the response payload and last 4 KB of execution logs.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `function_name` | string | Yes | — | Function name or full ARN |
+| `payload` | object | No | — | JSON event payload |
+| `invocation_type` | string | No | `RequestResponse` | `RequestResponse` (sync), `Event` (async), or `DryRun` |
+
+```bash
+curl -s -X POST http://localhost:8000/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool_name": "aws_invoke_lambda",
+    "inputs": {
+      "function_name": "my-processor",
+      "payload": {"key": "value"},
+      "invocation_type": "RequestResponse"
+    }
+  }'
+```
+
+> Long-running invocations should use `POST /tools/execute/async` — Lambda max timeout is 15 min; this endpoint caps at 5 min.
+
+---
+
+#### `aws_list_rds_instances`
+
+Lists RDS database instances with engine, status, endpoint, and Multi-AZ info.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `db_instance_identifier` | string | No | Filter to a specific instance by identifier |
+
+```bash
+curl -s -X POST http://localhost:8000/tools/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name": "aws_list_rds_instances", "inputs": {}}'
 ```
 
 ---
@@ -1311,21 +1456,27 @@ pytest tests/ -k "registry" -v
 | 3 | `terraform_destroy` | Terraform | Destroy (confirmation required) |
 | 4 | `github_create_pull_request` | GitHub | Open a PR |
 | 5 | `github_get_repo` | GitHub | Fetch repo metadata |
-| 6 | `aws_create_ec2_instance` | AWS | Launch EC2 instance |
-| 7 | `aws_list_ec2_instances` | AWS | List instances by state |
-| 8 | `aws_create_s3_bucket` | AWS | Create bucket (public access blocked) |
-| 9 | `aws_list_s3_buckets` | AWS | List all buckets |
-| 10 | `k8s_deploy` | Kubernetes | Create/update Deployment |
-| 11 | `k8s_get_pods` | Kubernetes | List pods with status |
-| 12 | `k8s_get_logs` | Kubernetes | Tail pod logs (supports previous) |
-| 13 | `k8s_get_events` | Kubernetes | Events — warnings first |
-| 14 | `k8s_scale` | Kubernetes | Change replica count |
-| 15 | `k8s_rollout_restart` | Kubernetes | Zero-downtime rolling restart |
-| 16 | `k8s_rollout_status` | Kubernetes | Verify rollout completed |
-| 17 | `k8s_get_deployments` | Kubernetes | Fleet view with image + conditions |
-| 18 | `k8s_get_services` | Kubernetes | Services with ports + external IPs |
-| 19 | `k8s_get_nodes` | Kubernetes | Node health + capacity |
-| 20 | `k8s_delete_pod` | Kubernetes | Targeted pod restart |
+| 6 | `github_list_issues` | GitHub | List issues with label/state filter |
+| 7 | `github_trigger_workflow` | GitHub | Trigger a workflow_dispatch |
+| 8 | `github_create_release` | GitHub | Create a tagged release |
+| 9 | `aws_create_ec2_instance` | AWS | Launch EC2 instance |
+| 10 | `aws_list_ec2_instances` | AWS | List instances by state |
+| 11 | `aws_create_s3_bucket` | AWS | Create bucket (public access blocked) |
+| 12 | `aws_list_s3_buckets` | AWS | List all buckets |
+| 13 | `aws_list_lambda_functions` | AWS | List Lambda functions |
+| 14 | `aws_invoke_lambda` | AWS | Invoke Lambda sync or async |
+| 15 | `aws_list_rds_instances` | AWS | List RDS instances with endpoint info |
+| 16 | `k8s_deploy` | Kubernetes | Create/update Deployment |
+| 17 | `k8s_get_pods` | Kubernetes | List pods with status |
+| 18 | `k8s_get_logs` | Kubernetes | Tail pod logs (supports previous) |
+| 19 | `k8s_get_events` | Kubernetes | Events — warnings first |
+| 20 | `k8s_scale` | Kubernetes | Change replica count |
+| 21 | `k8s_rollout_restart` | Kubernetes | Zero-downtime rolling restart |
+| 22 | `k8s_rollout_status` | Kubernetes | Verify rollout completed |
+| 23 | `k8s_get_deployments` | Kubernetes | Fleet view with image + conditions |
+| 24 | `k8s_get_services` | Kubernetes | Services with ports + external IPs |
+| 25 | `k8s_get_nodes` | Kubernetes | Node health + capacity |
+| 26 | `k8s_delete_pod` | Kubernetes | Targeted pod restart |
 
 ---
 

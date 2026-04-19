@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from core.config import get_settings
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -123,5 +124,14 @@ class AuditLog:
         log.info("audit_log_initialised", path=str(self._path))
 
 
+def _make_audit_log() -> AuditLog:
+    """Construct AuditLog using the configured AUDIT_DB_PATH."""
+    try:
+        path = get_settings().audit_db_path
+    except Exception:
+        path = "audit.db"
+    return AuditLog(db_path=path)
+
+
 # Singleton — imported by executor and main
-audit_log = AuditLog()
+audit_log = _make_audit_log()
