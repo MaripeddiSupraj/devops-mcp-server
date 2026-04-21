@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "devops-mcp-server"
+version = "2.0.0"
+description = "Production-grade MCP server exposing Terraform, GitHub, AWS, and Kubernetes tools for AI agents"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Supraj Maripeddi", email = "supraj.maripeddi@gmail.com" }
+]
+keywords = ["mcp", "devops", "terraform", "kubernetes", "aws", "github", "ai-agents", "claude"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+]
+dependencies = [
+    "mcp>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.7.1",
+    "pydantic-settings>=2.2.1",
+    "slowapi==0.1.9",
+    "prometheus-fastapi-instrumentator==7.0.0",
+    "jsonschema==4.22.0",
+    "structlog==24.1.0",
+    "PyGithub==2.3.0",
+    "boto3==1.34.84",
+    "botocore==1.34.84",
+    "kubernetes==29.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/MaripeddiSupraj/devops-mcp-server"
+Repository = "https://github.com/MaripeddiSupraj/devops-mcp-server"
+"Bug Tracker" = "https://github.com/MaripeddiSupraj/devops-mcp-server/issues"
+
+[project.scripts]
+devops-mcp-server = "server.mcp_stdio:_run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["server*", "core*", "tools*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.yaml", "*.yml"]

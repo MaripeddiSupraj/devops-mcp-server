@@ -1,5 +1,7 @@
 # DevOps MCP Server
 
+> **MCP name: io.github.maripeddisupraj/devops-mcp-server**
+>
 > A **production-grade Model Context Protocol (MCP) server** that exposes Terraform, GitHub, AWS, and Kubernetes as structured JSON tool APIs — designed for AI agents (LangGraph, AutoGen, custom agents) to automate DevOps workflows end-to-end.
 
 ---
