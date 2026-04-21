@@ -127,6 +127,44 @@ class TerraformRunner:
             self._ensure_initialized(work_dir)
             return self._run(["validate", "-no-color"], work_dir)
 
+    def init(self, path: str, upgrade: bool = False) -> dict:
+        """Run ``terraform init`` explicitly in *path*."""
+        work_dir = self._validated_path(path)
+        with _get_path_lock(work_dir):
+            args = ["init", "-no-color", "-input=false"]
+            if upgrade:
+                args.append("-upgrade")
+            return self._run(args, work_dir)
+
+    def output(self, path: str) -> dict:
+        """Run ``terraform output -json`` and return parsed output values."""
+        import json as _json
+        work_dir = self._validated_path(path)
+        with _get_path_lock(work_dir):
+            result = self._run(["output", "-no-color", "-json"], work_dir)
+            if result["exit_code"] == 0 and result["stdout"].strip():
+                try:
+                    result["outputs"] = _json.loads(result["stdout"])
+                except ValueError:
+                    result["outputs"] = {}
+            else:
+                result["outputs"] = {}
+            return result
+
+    def state_list(self, path: str) -> dict:
+        """Run ``terraform state list`` and return resource addresses."""
+        work_dir = self._validated_path(path)
+        with _get_path_lock(work_dir):
+            result = self._run(["state", "list", "-no-color"], work_dir)
+            resources = [
+                line.strip()
+                for line in result["stdout"].splitlines()
+                if line.strip()
+            ]
+            result["resources"] = resources
+            result["count"] = len(resources)
+            return result
+
     def version(self) -> dict:
         """Return ``terraform version`` output."""
         return self._run(["version", "-json"], cwd=None)

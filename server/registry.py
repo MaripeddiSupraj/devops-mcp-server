@@ -122,9 +122,12 @@ def build_registry() -> ToolRegistry:
     Adding a new tool: import its module here and call ``registry.register()``.
     No other file needs to change.
     """
-    from tools.terraform import apply, destroy, plan
-    from tools.github import create_pr, get_repo, list_issues, trigger_workflow, create_release
-    from tools.aws import ec2, s3, lambda_tools, rds
+    from tools.terraform import apply, destroy, plan, init, validate, output, state_list
+    from tools.github import (
+        create_pr, get_repo, list_issues, trigger_workflow, create_release,
+        create_issue, merge_pr, get_workflow_run,
+    )
+    from tools.aws import ec2, s3, lambda_tools, rds, ec2_lifecycle, s3_objects, cloudwatch, secrets, networking
     from tools.kubernetes import (
         deploy,
         get_pods,
@@ -138,6 +141,9 @@ def build_registry() -> ToolRegistry:
         get_nodes,
         delete_pod,
     )
+    from tools.helm import helm_tools
+    from tools.azure import azure_tools
+    from tools.gcp import gcp_tools
 
     registry = ToolRegistry()
 
@@ -162,6 +168,34 @@ def build_registry() -> ToolRegistry:
         input_schema=destroy.TOOL_INPUT_SCHEMA,
         handler=destroy.handler,
         tags=["terraform", "iac", "destructive"],
+    ))
+    registry.register(ToolEntry(
+        name=init.TOOL_NAME,
+        description=init.TOOL_DESCRIPTION,
+        input_schema=init.TOOL_INPUT_SCHEMA,
+        handler=init.handler,
+        tags=["terraform", "iac"],
+    ))
+    registry.register(ToolEntry(
+        name=validate.TOOL_NAME,
+        description=validate.TOOL_DESCRIPTION,
+        input_schema=validate.TOOL_INPUT_SCHEMA,
+        handler=validate.handler,
+        tags=["terraform", "iac"],
+    ))
+    registry.register(ToolEntry(
+        name=output.TOOL_NAME,
+        description=output.TOOL_DESCRIPTION,
+        input_schema=output.TOOL_INPUT_SCHEMA,
+        handler=output.handler,
+        tags=["terraform", "iac"],
+    ))
+    registry.register(ToolEntry(
+        name=state_list.TOOL_NAME,
+        description=state_list.TOOL_DESCRIPTION,
+        input_schema=state_list.TOOL_INPUT_SCHEMA,
+        handler=state_list.handler,
+        tags=["terraform", "iac"],
     ))
 
     # ── GitHub ─────────────────────────────────────────────────────────────
@@ -199,6 +233,27 @@ def build_registry() -> ToolRegistry:
         input_schema=create_release.TOOL_INPUT_SCHEMA,
         handler=create_release.handler,
         tags=["github", "scm"],
+    ))
+    registry.register(ToolEntry(
+        name=create_issue.TOOL_NAME,
+        description=create_issue.TOOL_DESCRIPTION,
+        input_schema=create_issue.TOOL_INPUT_SCHEMA,
+        handler=create_issue.handler,
+        tags=["github", "scm"],
+    ))
+    registry.register(ToolEntry(
+        name=merge_pr.TOOL_NAME,
+        description=merge_pr.TOOL_DESCRIPTION,
+        input_schema=merge_pr.TOOL_INPUT_SCHEMA,
+        handler=merge_pr.handler,
+        tags=["github", "scm"],
+    ))
+    registry.register(ToolEntry(
+        name=get_workflow_run.TOOL_NAME,
+        description=get_workflow_run.TOOL_DESCRIPTION,
+        input_schema=get_workflow_run.TOOL_INPUT_SCHEMA,
+        handler=get_workflow_run.handler,
+        tags=["github", "scm", "ci"],
     ))
 
     # ── AWS ────────────────────────────────────────────────────────────────
@@ -251,6 +306,117 @@ def build_registry() -> ToolRegistry:
         input_schema=rds.TOOL_INPUT_SCHEMA,
         handler=rds.handler,
         tags=["aws", "rds", "database"],
+    ))
+    # EC2 lifecycle
+    registry.register(ToolEntry(
+        name=ec2_lifecycle.STOP_TOOL_NAME,
+        description=ec2_lifecycle.STOP_TOOL_DESCRIPTION,
+        input_schema=ec2_lifecycle.STOP_TOOL_INPUT_SCHEMA,
+        handler=ec2_lifecycle.stop_handler,
+        tags=["aws", "ec2", "compute"],
+    ))
+    registry.register(ToolEntry(
+        name=ec2_lifecycle.START_TOOL_NAME,
+        description=ec2_lifecycle.START_TOOL_DESCRIPTION,
+        input_schema=ec2_lifecycle.START_TOOL_INPUT_SCHEMA,
+        handler=ec2_lifecycle.start_handler,
+        tags=["aws", "ec2", "compute"],
+    ))
+    registry.register(ToolEntry(
+        name=ec2_lifecycle.TERMINATE_TOOL_NAME,
+        description=ec2_lifecycle.TERMINATE_TOOL_DESCRIPTION,
+        input_schema=ec2_lifecycle.TERMINATE_TOOL_INPUT_SCHEMA,
+        handler=ec2_lifecycle.terminate_handler,
+        tags=["aws", "ec2", "compute", "destructive"],
+    ))
+    # S3 objects
+    registry.register(ToolEntry(
+        name=s3_objects.TOOL_NAME,
+        description=s3_objects.TOOL_DESCRIPTION,
+        input_schema=s3_objects.TOOL_INPUT_SCHEMA,
+        handler=s3_objects.handler,
+        tags=["aws", "s3", "storage"],
+    ))
+    # CloudWatch
+    registry.register(ToolEntry(
+        name=cloudwatch.GET_METRICS_TOOL_NAME,
+        description=cloudwatch.GET_METRICS_TOOL_DESCRIPTION,
+        input_schema=cloudwatch.GET_METRICS_TOOL_INPUT_SCHEMA,
+        handler=cloudwatch.get_metrics_handler,
+        tags=["aws", "cloudwatch", "observability"],
+    ))
+    registry.register(ToolEntry(
+        name=cloudwatch.ALARMS_TOOL_NAME,
+        description=cloudwatch.ALARMS_TOOL_DESCRIPTION,
+        input_schema=cloudwatch.ALARMS_TOOL_INPUT_SCHEMA,
+        handler=cloudwatch.alarms_handler,
+        tags=["aws", "cloudwatch", "observability"],
+    ))
+    registry.register(ToolEntry(
+        name=cloudwatch.LOG_GROUPS_TOOL_NAME,
+        description=cloudwatch.LOG_GROUPS_TOOL_DESCRIPTION,
+        input_schema=cloudwatch.LOG_GROUPS_TOOL_INPUT_SCHEMA,
+        handler=cloudwatch.log_groups_handler,
+        tags=["aws", "cloudwatch", "observability", "logs"],
+    ))
+    registry.register(ToolEntry(
+        name=cloudwatch.QUERY_LOGS_TOOL_NAME,
+        description=cloudwatch.QUERY_LOGS_TOOL_DESCRIPTION,
+        input_schema=cloudwatch.QUERY_LOGS_TOOL_INPUT_SCHEMA,
+        handler=cloudwatch.query_logs_handler,
+        tags=["aws", "cloudwatch", "observability", "logs"],
+        timeout_seconds=60,
+    ))
+    # Secrets / SSM
+    registry.register(ToolEntry(
+        name=secrets.SECRETS_GET_TOOL_NAME,
+        description=secrets.SECRETS_GET_TOOL_DESCRIPTION,
+        input_schema=secrets.SECRETS_GET_TOOL_INPUT_SCHEMA,
+        handler=secrets.secrets_get_handler,
+        tags=["aws", "secrets", "security"],
+    ))
+    registry.register(ToolEntry(
+        name=secrets.SECRETS_CREATE_TOOL_NAME,
+        description=secrets.SECRETS_CREATE_TOOL_DESCRIPTION,
+        input_schema=secrets.SECRETS_CREATE_TOOL_INPUT_SCHEMA,
+        handler=secrets.secrets_create_handler,
+        tags=["aws", "secrets", "security"],
+    ))
+    registry.register(ToolEntry(
+        name=secrets.SSM_GET_TOOL_NAME,
+        description=secrets.SSM_GET_TOOL_DESCRIPTION,
+        input_schema=secrets.SSM_GET_TOOL_INPUT_SCHEMA,
+        handler=secrets.ssm_get_handler,
+        tags=["aws", "ssm", "config"],
+    ))
+    registry.register(ToolEntry(
+        name=secrets.SSM_PUT_TOOL_NAME,
+        description=secrets.SSM_PUT_TOOL_DESCRIPTION,
+        input_schema=secrets.SSM_PUT_TOOL_INPUT_SCHEMA,
+        handler=secrets.ssm_put_handler,
+        tags=["aws", "ssm", "config"],
+    ))
+    # Networking
+    registry.register(ToolEntry(
+        name=networking.VPC_LIST_TOOL_NAME,
+        description=networking.VPC_LIST_TOOL_DESCRIPTION,
+        input_schema=networking.VPC_LIST_TOOL_INPUT_SCHEMA,
+        handler=networking.vpc_list_handler,
+        tags=["aws", "networking", "vpc"],
+    ))
+    registry.register(ToolEntry(
+        name=networking.SG_LIST_TOOL_NAME,
+        description=networking.SG_LIST_TOOL_DESCRIPTION,
+        input_schema=networking.SG_LIST_TOOL_INPUT_SCHEMA,
+        handler=networking.sg_list_handler,
+        tags=["aws", "networking", "security"],
+    ))
+    registry.register(ToolEntry(
+        name=networking.R53_TOOL_NAME,
+        description=networking.R53_TOOL_DESCRIPTION,
+        input_schema=networking.R53_TOOL_INPUT_SCHEMA,
+        handler=networking.r53_list_handler,
+        tags=["aws", "networking", "dns"],
     ))
 
     # ── Kubernetes ─────────────────────────────────────────────────────────
@@ -330,6 +496,101 @@ def build_registry() -> ToolRegistry:
         input_schema=delete_pod.TOOL_INPUT_SCHEMA,
         handler=delete_pod.handler,
         tags=["kubernetes", "k8s", "debug"],
+    ))
+
+    # ── Helm ───────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(
+        name=helm_tools.LIST_TOOL_NAME,
+        description=helm_tools.LIST_TOOL_DESCRIPTION,
+        input_schema=helm_tools.LIST_TOOL_INPUT_SCHEMA,
+        handler=helm_tools.list_handler,
+        tags=["helm", "kubernetes", "k8s"],
+    ))
+    registry.register(ToolEntry(
+        name=helm_tools.INSTALL_TOOL_NAME,
+        description=helm_tools.INSTALL_TOOL_DESCRIPTION,
+        input_schema=helm_tools.INSTALL_TOOL_INPUT_SCHEMA,
+        handler=helm_tools.install_handler,
+        tags=["helm", "kubernetes", "k8s"],
+        timeout_seconds=300,
+    ))
+    registry.register(ToolEntry(
+        name=helm_tools.UPGRADE_TOOL_NAME,
+        description=helm_tools.UPGRADE_TOOL_DESCRIPTION,
+        input_schema=helm_tools.UPGRADE_TOOL_INPUT_SCHEMA,
+        handler=helm_tools.upgrade_handler,
+        tags=["helm", "kubernetes", "k8s"],
+        timeout_seconds=300,
+    ))
+    registry.register(ToolEntry(
+        name=helm_tools.ROLLBACK_TOOL_NAME,
+        description=helm_tools.ROLLBACK_TOOL_DESCRIPTION,
+        input_schema=helm_tools.ROLLBACK_TOOL_INPUT_SCHEMA,
+        handler=helm_tools.rollback_handler,
+        tags=["helm", "kubernetes", "k8s"],
+        timeout_seconds=300,
+    ))
+    registry.register(ToolEntry(
+        name=helm_tools.STATUS_TOOL_NAME,
+        description=helm_tools.STATUS_TOOL_DESCRIPTION,
+        input_schema=helm_tools.STATUS_TOOL_INPUT_SCHEMA,
+        handler=helm_tools.status_handler,
+        tags=["helm", "kubernetes", "k8s"],
+    ))
+
+    # ── Azure ──────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(
+        name=azure_tools.RG_LIST_TOOL_NAME,
+        description=azure_tools.RG_LIST_TOOL_DESCRIPTION,
+        input_schema=azure_tools.RG_LIST_TOOL_INPUT_SCHEMA,
+        handler=azure_tools.rg_list_handler,
+        tags=["azure", "cloud", "multicloud"],
+    ))
+    registry.register(ToolEntry(
+        name=azure_tools.VM_LIST_TOOL_NAME,
+        description=azure_tools.VM_LIST_TOOL_DESCRIPTION,
+        input_schema=azure_tools.VM_LIST_TOOL_INPUT_SCHEMA,
+        handler=azure_tools.vm_list_handler,
+        tags=["azure", "cloud", "compute", "multicloud"],
+    ))
+    registry.register(ToolEntry(
+        name=azure_tools.VM_START_TOOL_NAME,
+        description=azure_tools.VM_START_TOOL_DESCRIPTION,
+        input_schema=azure_tools.VM_START_TOOL_INPUT_SCHEMA,
+        handler=azure_tools.vm_start_handler,
+        tags=["azure", "cloud", "compute", "multicloud"],
+        timeout_seconds=360,
+    ))
+    registry.register(ToolEntry(
+        name=azure_tools.VM_STOP_TOOL_NAME,
+        description=azure_tools.VM_STOP_TOOL_DESCRIPTION,
+        input_schema=azure_tools.VM_STOP_TOOL_INPUT_SCHEMA,
+        handler=azure_tools.vm_stop_handler,
+        tags=["azure", "cloud", "compute", "multicloud"],
+        timeout_seconds=360,
+    ))
+
+    # ── GCP ────────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(
+        name=gcp_tools.INSTANCES_TOOL_NAME,
+        description=gcp_tools.INSTANCES_TOOL_DESCRIPTION,
+        input_schema=gcp_tools.INSTANCES_TOOL_INPUT_SCHEMA,
+        handler=gcp_tools.instances_handler,
+        tags=["gcp", "cloud", "compute", "multicloud"],
+    ))
+    registry.register(ToolEntry(
+        name=gcp_tools.BUCKETS_TOOL_NAME,
+        description=gcp_tools.BUCKETS_TOOL_DESCRIPTION,
+        input_schema=gcp_tools.BUCKETS_TOOL_INPUT_SCHEMA,
+        handler=gcp_tools.buckets_handler,
+        tags=["gcp", "cloud", "storage", "multicloud"],
+    ))
+    registry.register(ToolEntry(
+        name=gcp_tools.GKE_TOOL_NAME,
+        description=gcp_tools.GKE_TOOL_DESCRIPTION,
+        input_schema=gcp_tools.GKE_TOOL_INPUT_SCHEMA,
+        handler=gcp_tools.gke_handler,
+        tags=["gcp", "cloud", "kubernetes", "multicloud"],
     ))
 
     log.info("registry_built", total_tools=len(registry))

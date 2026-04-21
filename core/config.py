@@ -77,6 +77,22 @@ class Settings(BaseSettings):
         ),
     )
 
+    # ── Azure ────────────────────────────────────────────────────────────────
+    azure_subscription_id: Optional[str] = Field(default=None, env="AZURE_SUBSCRIPTION_ID")
+    azure_tenant_id: Optional[str] = Field(default=None, env="AZURE_TENANT_ID")
+    azure_client_id: Optional[str] = Field(default=None, env="AZURE_CLIENT_ID")
+    azure_client_secret: Optional[str] = Field(default=None, env="AZURE_CLIENT_SECRET")
+
+    # ── GCP ──────────────────────────────────────────────────────────────────
+    gcp_project_id: Optional[str] = Field(default=None, env="GCP_PROJECT_ID")
+    google_application_credentials: Optional[str] = Field(
+        default=None, env="GOOGLE_APPLICATION_CREDENTIALS"
+    )
+
+    # ── Helm ─────────────────────────────────────────────────────────────────
+    helm_binary: str = Field(default="helm", env="HELM_BINARY")
+    helm_timeout_seconds: int = Field(default=300, env="HELM_TIMEOUT_SECONDS")
+
     # ── Slack ────────────────────────────────────────────────────────────────
     slack_webhook_url: Optional[str] = Field(
         default=None,

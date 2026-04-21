@@ -53,6 +53,30 @@ def get_aws_credentials() -> Tuple[str, str, str]:
     return settings.aws_access_key_id, settings.aws_secret_access_key, settings.aws_region
 
 
+def get_azure_credentials() -> str:
+    """Return the Azure subscription ID. Raises if not set."""
+    sub_id = get_settings().azure_subscription_id
+    if not sub_id:
+        raise AuthenticationError(
+            "AZURE_SUBSCRIPTION_ID is not set. "
+            "Also set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET for service principal auth."
+        )
+    log.debug("azure_credentials_loaded", subscription=sub_id)
+    return sub_id
+
+
+def get_gcp_credentials() -> str:
+    """Return the GCP project ID. Raises if not set."""
+    project = get_settings().gcp_project_id
+    if not project:
+        raise AuthenticationError(
+            "GCP_PROJECT_ID is not set. "
+            "Also set GOOGLE_APPLICATION_CREDENTIALS or run `gcloud auth application-default login`."
+        )
+    log.debug("gcp_credentials_loaded", project=project)
+    return project
+
+
 def get_kubeconfig_path() -> str | None:
     """
     Return the path to the kubeconfig file, or None (uses in-cluster config).

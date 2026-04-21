@@ -133,6 +133,48 @@ class EC2Client:
             "availability_zone": instance.get("Placement", {}).get("AvailabilityZone"),
         }
 
+    def stop_instance(self, instance_id: str) -> Dict[str, Any]:
+        """Stop a running EC2 instance (can be restarted)."""
+        try:
+            resp = self._ec2.stop_instances(InstanceIds=[instance_id])
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"stop_instances failed: {exc}") from exc
+        state = resp["StoppingInstances"][0]
+        log.info("ec2_instance_stopped", instance_id=instance_id)
+        return {
+            "instance_id": instance_id,
+            "previous_state": state["PreviousState"]["Name"],
+            "current_state": state["CurrentState"]["Name"],
+        }
+
+    def start_instance(self, instance_id: str) -> Dict[str, Any]:
+        """Start a stopped EC2 instance."""
+        try:
+            resp = self._ec2.start_instances(InstanceIds=[instance_id])
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"start_instances failed: {exc}") from exc
+        state = resp["StartingInstances"][0]
+        log.info("ec2_instance_started", instance_id=instance_id)
+        return {
+            "instance_id": instance_id,
+            "previous_state": state["PreviousState"]["Name"],
+            "current_state": state["CurrentState"]["Name"],
+        }
+
+    def terminate_instance(self, instance_id: str) -> Dict[str, Any]:
+        """Permanently terminate an EC2 instance (irreversible)."""
+        try:
+            resp = self._ec2.terminate_instances(InstanceIds=[instance_id])
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"terminate_instances failed: {exc}") from exc
+        state = resp["TerminatingInstances"][0]
+        log.info("ec2_instance_terminated", instance_id=instance_id)
+        return {
+            "instance_id": instance_id,
+            "previous_state": state["PreviousState"]["Name"],
+            "current_state": state["CurrentState"]["Name"],
+        }
+
     def list_instances(self, filters: Optional[List[Dict]] = None) -> List[Dict[str, Any]]:
         """Return a list of running EC2 instances."""
         try:
@@ -207,6 +249,251 @@ class S3Client:
 
         log.info("s3_bucket_created", bucket=bucket_name, region=effective_region)
         return {"bucket": bucket_name, "region": effective_region, "public_access": "blocked"}
+
+    def upload_object(self, bucket: str, key: str, body: str, content_type: str = "text/plain") -> Dict[str, Any]:
+        """Upload a string body as an S3 object."""
+        try:
+            self._s3.put_object(Bucket=bucket, Key=key, Body=body.encode(), ContentType=content_type)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"put_object failed: {exc}") from exc
+        log.info("s3_object_uploaded", bucket=bucket, key=key)
+        return {"bucket": bucket, "key": key, "content_type": content_type, "size_bytes": len(body.encode())}
+
+
+class CloudWatchClient:
+    """CloudWatch operations used by MCP tool handlers."""
+
+    def __init__(self) -> None:
+        self._cw = _session().client("cloudwatch")
+        self._logs = _session().client("logs")
+
+    def get_metrics(
+        self,
+        namespace: str,
+        metric_name: str,
+        dimensions: Optional[List[Dict[str, str]]] = None,
+        period: int = 300,
+        stat: str = "Average",
+        hours: int = 1,
+    ) -> Dict[str, Any]:
+        from datetime import datetime, timezone, timedelta
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(hours=hours)
+        kwargs: Dict[str, Any] = {
+            "Namespace": namespace,
+            "MetricName": metric_name,
+            "StartTime": start,
+            "EndTime": end,
+            "Period": period,
+            "Statistics": [stat],
+        }
+        if dimensions:
+            kwargs["Dimensions"] = dimensions
+        try:
+            resp = self._cw.get_metric_statistics(**kwargs)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"get_metric_statistics failed: {exc}") from exc
+        datapoints = sorted(resp.get("Datapoints", []), key=lambda d: d["Timestamp"])
+        return {
+            "namespace": namespace,
+            "metric": metric_name,
+            "stat": stat,
+            "period_seconds": period,
+            "datapoints": [
+                {"timestamp": str(d["Timestamp"]), "value": d[stat]}
+                for d in datapoints
+            ],
+        }
+
+    def describe_alarms(self, state: Optional[str] = None, prefix: Optional[str] = None) -> List[Dict[str, Any]]:
+        kwargs: Dict[str, Any] = {}
+        if state:
+            kwargs["StateValue"] = state
+        if prefix:
+            kwargs["AlarmNamePrefix"] = prefix
+        try:
+            resp = self._cw.describe_alarms(**kwargs)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"describe_alarms failed: {exc}") from exc
+        return [
+            {
+                "name": a["AlarmName"],
+                "state": a["StateValue"],
+                "reason": a.get("StateReason", ""),
+                "metric": a.get("MetricName"),
+                "namespace": a.get("Namespace"),
+                "threshold": a.get("Threshold"),
+                "comparison": a.get("ComparisonOperator"),
+            }
+            for a in resp.get("MetricAlarms", [])
+        ]
+
+    def get_log_groups(self, prefix: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+        kwargs: Dict[str, Any] = {"limit": limit}
+        if prefix:
+            kwargs["logGroupNamePrefix"] = prefix
+        try:
+            resp = self._logs.describe_log_groups(**kwargs)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"describe_log_groups failed: {exc}") from exc
+        return [
+            {
+                "name": g["logGroupName"],
+                "retention_days": g.get("retentionInDays"),
+                "stored_bytes": g.get("storedBytes", 0),
+                "created": str(g.get("creationTime", "")),
+            }
+            for g in resp.get("logGroups", [])
+        ]
+
+    def query_logs(
+        self,
+        log_group: str,
+        query_string: str,
+        hours: int = 1,
+        limit: int = 100,
+    ) -> Dict[str, Any]:
+        import time
+        from datetime import datetime, timezone, timedelta
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(hours=hours)
+        try:
+            start_resp = self._logs.start_query(
+                logGroupName=log_group,
+                startTime=int(start.timestamp()),
+                endTime=int(end.timestamp()),
+                queryString=query_string,
+                limit=limit,
+            )
+            query_id = start_resp["queryId"]
+            for _ in range(30):
+                result = self._logs.get_query_results(queryId=query_id)
+                if result["status"] in ("Complete", "Failed", "Cancelled"):
+                    break
+                time.sleep(1)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"CloudWatch Logs query failed: {exc}") from exc
+        rows = [
+            {f["field"]: f["value"] for f in row}
+            for row in result.get("results", [])
+        ]
+        return {"status": result["status"], "results": rows, "scanned_bytes": result.get("statistics", {}).get("bytesScanned")}
+
+
+class SecretsClient:
+    """AWS Secrets Manager operations used by MCP tool handlers."""
+
+    def __init__(self) -> None:
+        self._sm = _session().client("secretsmanager")
+
+    def get_secret(self, secret_id: str) -> Dict[str, Any]:
+        try:
+            resp = self._sm.get_secret_value(SecretId=secret_id)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"get_secret_value failed: {exc}") from exc
+        log.info("secret_retrieved", secret_id=secret_id)
+        return {
+            "name": resp["Name"],
+            "arn": resp["ARN"],
+            "secret_string": resp.get("SecretString"),
+            "version_id": resp.get("VersionId"),
+        }
+
+    def create_secret(self, name: str, secret_string: str, description: str = "") -> Dict[str, Any]:
+        try:
+            resp = self._sm.create_secret(
+                Name=name,
+                SecretString=secret_string,
+                Description=description,
+            )
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"create_secret failed: {exc}") from exc
+        log.info("secret_created", name=name)
+        return {"name": resp["Name"], "arn": resp["ARN"], "version_id": resp["VersionId"]}
+
+
+class SSMClient:
+    """AWS SSM Parameter Store operations used by MCP tool handlers."""
+
+    def __init__(self) -> None:
+        self._ssm = _session().client("ssm")
+
+    def get_parameter(self, name: str, with_decryption: bool = True) -> Dict[str, Any]:
+        try:
+            resp = self._ssm.get_parameter(Name=name, WithDecryption=with_decryption)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"get_parameter failed: {exc}") from exc
+        p = resp["Parameter"]
+        return {"name": p["Name"], "type": p["Type"], "value": p["Value"], "version": p["Version"]}
+
+    def put_parameter(self, name: str, value: str, param_type: str = "String", overwrite: bool = False) -> Dict[str, Any]:
+        try:
+            resp = self._ssm.put_parameter(
+                Name=name, Value=value, Type=param_type, Overwrite=overwrite
+            )
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"put_parameter failed: {exc}") from exc
+        log.info("ssm_parameter_put", name=name)
+        return {"name": name, "version": resp["Version"], "tier": resp.get("Tier", "Standard")}
+
+
+class NetworkingClient:
+    """AWS VPC/Security Group/Route53 operations used by MCP tool handlers."""
+
+    def __init__(self) -> None:
+        self._ec2 = _session().client("ec2")
+        self._r53 = _session().client("route53")
+
+    def list_vpcs(self) -> List[Dict[str, Any]]:
+        try:
+            resp = self._ec2.describe_vpcs()
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"describe_vpcs failed: {exc}") from exc
+        return [
+            {
+                "vpc_id": v["VpcId"],
+                "cidr": v["CidrBlock"],
+                "state": v["State"],
+                "is_default": v.get("IsDefault", False),
+                "name": next((t["Value"] for t in v.get("Tags", []) if t["Key"] == "Name"), ""),
+            }
+            for v in resp.get("Vpcs", [])
+        ]
+
+    def list_security_groups(self, vpc_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        filters = []
+        if vpc_id:
+            filters = [{"Name": "vpc-id", "Values": [vpc_id]}]
+        try:
+            resp = self._ec2.describe_security_groups(Filters=filters)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"describe_security_groups failed: {exc}") from exc
+        return [
+            {
+                "group_id": sg["GroupId"],
+                "name": sg["GroupName"],
+                "description": sg.get("Description", ""),
+                "vpc_id": sg.get("VpcId"),
+                "inbound_rules": len(sg.get("IpPermissions", [])),
+                "outbound_rules": len(sg.get("IpPermissionsEgress", [])),
+            }
+            for sg in resp.get("SecurityGroups", [])
+        ]
+
+    def list_hosted_zones(self) -> List[Dict[str, Any]]:
+        try:
+            resp = self._r53.list_hosted_zones()
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"list_hosted_zones failed: {exc}") from exc
+        return [
+            {
+                "id": z["Id"].split("/")[-1],
+                "name": z["Name"],
+                "private": z["Config"].get("PrivateZone", False),
+                "record_count": z["ResourceRecordSetCount"],
+            }
+            for z in resp.get("HostedZones", [])
+        ]
 
 
 class LambdaClient:

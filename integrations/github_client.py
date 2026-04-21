@@ -209,6 +209,73 @@ class GitHubClient:
                 f"Failed to trigger workflow '{workflow_id}': {exc.data}"
             ) from exc
 
+    def create_issue(
+        self,
+        repo_full_name: str,
+        title: str,
+        body: str = "",
+        labels: Optional[list] = None,
+        assignees: Optional[list] = None,
+    ) -> dict:
+        repo = self.get_repo(repo_full_name)
+        try:
+            issue = repo.create_issue(
+                title=title,
+                body=body,
+                labels=labels or [],
+                assignees=assignees or [],
+            )
+            log.info("github_issue_created", repo=repo_full_name, issue=issue.number)
+            return {
+                "number": issue.number,
+                "title": issue.title,
+                "url": issue.html_url,
+                "state": issue.state,
+                "labels": [lb.name for lb in issue.labels],
+            }
+        except GithubException as exc:
+            raise GitHubClientError(f"Failed to create issue in '{repo_full_name}': {exc.data}") from exc
+
+    def merge_pr(
+        self,
+        repo_full_name: str,
+        pr_number: int,
+        merge_method: str = "merge",
+        commit_message: str = "",
+    ) -> dict:
+        repo = self.get_repo(repo_full_name)
+        try:
+            pr = repo.get_pull(pr_number)
+            result = pr.merge(merge_method=merge_method, commit_message=commit_message or pr.title)
+            log.info("github_pr_merged", repo=repo_full_name, pr=pr_number)
+            return {
+                "merged": result.merged,
+                "message": result.message,
+                "sha": result.sha,
+                "pr_number": pr_number,
+            }
+        except GithubException as exc:
+            raise GitHubClientError(f"Failed to merge PR #{pr_number}: {exc.data}") from exc
+
+    def get_workflow_run(self, repo_full_name: str, run_id: int) -> dict:
+        repo = self.get_repo(repo_full_name)
+        try:
+            run = repo.get_workflow_run(run_id)
+            return {
+                "id": run.id,
+                "name": run.name,
+                "status": run.status,
+                "conclusion": run.conclusion,
+                "workflow_id": run.workflow_id,
+                "branch": run.head_branch,
+                "commit_sha": run.head_sha,
+                "url": run.html_url,
+                "created_at": run.created_at.isoformat() if run.created_at else None,
+                "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+            }
+        except GithubException as exc:
+            raise GitHubClientError(f"Failed to get workflow run {run_id}: {exc.data}") from exc
+
     def create_release(
         self,
         repo_full_name: str,
