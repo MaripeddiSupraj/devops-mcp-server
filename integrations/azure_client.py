@@ -88,6 +88,82 @@ class AzureComputeClient:
         return {"resource_group": resource_group, "vm_name": vm_name, "action": action, "status": "succeeded"}
 
 
+class AzureContainerClient:
+    """Azure Container Registry (ACR) operations."""
+
+    def __init__(self) -> None:
+        from azure.mgmt.containerregistry import ContainerRegistryManagementClient
+        self._client = ContainerRegistryManagementClient(_get_credential(), _subscription_id())
+
+    def list_registries(self) -> List[Dict[str, Any]]:
+        try:
+            registries = list(self._client.registries.list())
+        except Exception as exc:
+            raise AzureClientError(f"list_registries failed: {exc}") from exc
+        return [
+            {
+                "name": r.name,
+                "location": r.location,
+                "login_server": r.login_server,
+                "sku": r.sku.name if r.sku else None,
+                "admin_enabled": r.admin_user_enabled,
+                "resource_group": r.id.split("/")[4] if r.id else None,
+            }
+            for r in registries
+        ]
+
+
+class AzureAKSClient:
+    """Azure Kubernetes Service (AKS) operations."""
+
+    def __init__(self) -> None:
+        from azure.mgmt.containerservice import ContainerServiceClient
+        self._client = ContainerServiceClient(_get_credential(), _subscription_id())
+
+    def list_clusters(self) -> List[Dict[str, Any]]:
+        try:
+            clusters = list(self._client.managed_clusters.list())
+        except Exception as exc:
+            raise AzureClientError(f"list_clusters failed: {exc}") from exc
+        return [
+            {
+                "name": c.name,
+                "location": c.location,
+                "resource_group": c.id.split("/")[4] if c.id else None,
+                "k8s_version": c.kubernetes_version,
+                "provisioning_state": c.provisioning_state,
+                "node_count": sum(p.count or 0 for p in (c.agent_pool_profiles or [])),
+                "fqdn": c.fqdn,
+            }
+            for c in clusters
+        ]
+
+
+class AzureKeyVaultClient:
+    """Azure Key Vault secret operations."""
+
+    def __init__(self, vault_url: str) -> None:
+        from azure.keyvault.secrets import SecretClient
+        self._client = SecretClient(vault_url=vault_url, credential=_get_credential())
+        self._vault_url = vault_url
+
+    def get_secret(self, name: str) -> Dict[str, Any]:
+        try:
+            secret = self._client.get_secret(name)
+        except Exception as exc:
+            raise AzureClientError(f"get_secret failed: {exc}") from exc
+        log.info("azure_keyvault_secret_retrieved", name=name, vault=self._vault_url)
+        return {"name": secret.name, "value": secret.value, "version": secret.properties.version, "enabled": secret.properties.enabled}
+
+    def set_secret(self, name: str, value: str) -> Dict[str, Any]:
+        try:
+            secret = self._client.set_secret(name, value)
+        except Exception as exc:
+            raise AzureClientError(f"set_secret failed: {exc}") from exc
+        log.info("azure_keyvault_secret_set", name=name, vault=self._vault_url)
+        return {"name": secret.name, "version": secret.properties.version, "enabled": secret.properties.enabled}
+
+
 class AzureResourceClient:
     """Azure Resource Group operations used by MCP tool handlers."""
 

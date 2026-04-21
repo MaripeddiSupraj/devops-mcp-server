@@ -92,6 +92,97 @@ class GCPStorageClient:
         ]
 
 
+class GCPCloudRunClient:
+    """GCP Cloud Run operations."""
+
+    def __init__(self) -> None:
+        from google.cloud import run_v2
+        self._client = run_v2.ServicesClient()
+        self._project = _project_id()
+
+    def list_services(self, region: str = "-") -> List[Dict[str, Any]]:
+        from google.cloud import run_v2
+        try:
+            parent = f"projects/{self._project}/locations/{region}"
+            request = run_v2.ListServicesRequest(parent=parent)
+            services = list(self._client.list_services(request=request))
+        except Exception as exc:
+            raise GCPClientError(f"list_services failed: {exc}") from exc
+        return [
+            {
+                "name": s.name.split("/")[-1],
+                "region": s.name.split("/")[3] if "/" in s.name else region,
+                "url": s.uri,
+                "condition": s.terminal_condition.state.name if s.terminal_condition else None,
+                "last_modifier": s.last_modifier,
+                "create_time": s.create_time.isoformat() if s.create_time else None,
+            }
+            for s in services
+        ]
+
+
+class GCPCloudSQLClient:
+    """GCP Cloud SQL operations."""
+
+    def __init__(self) -> None:
+        import googleapiclient.discovery
+        self._service = googleapiclient.discovery.build("sqladmin", "v1")
+        self._project = _project_id()
+
+    def list_instances(self) -> List[Dict[str, Any]]:
+        try:
+            resp = self._service.instances().list(project=self._project).execute()
+        except Exception as exc:
+            raise GCPClientError(f"list_instances failed: {exc}") from exc
+        return [
+            {
+                "name": inst["name"],
+                "database_version": inst.get("databaseVersion"),
+                "state": inst.get("state"),
+                "region": inst.get("region"),
+                "tier": inst.get("settings", {}).get("tier"),
+                "ip_address": next((ip["ipAddress"] for ip in inst.get("ipAddresses", []) if ip.get("type") == "PRIMARY"), None),
+            }
+            for inst in resp.get("items", [])
+        ]
+
+
+class GCPCloudBuildClient:
+    """GCP Cloud Build operations."""
+
+    def __init__(self) -> None:
+        import googleapiclient.discovery
+        self._service = googleapiclient.discovery.build("cloudbuild", "v1")
+        self._project = _project_id()
+
+    def list_builds(self, limit: int = 20) -> List[Dict[str, Any]]:
+        try:
+            resp = self._service.projects().builds().list(projectId=self._project, pageSize=limit).execute()
+        except Exception as exc:
+            raise GCPClientError(f"list_builds failed: {exc}") from exc
+        return [
+            {
+                "id": b["id"],
+                "status": b.get("status"),
+                "source": b.get("source", {}).get("repoSource", {}).get("repoName"),
+                "branch": b.get("source", {}).get("repoSource", {}).get("branchName"),
+                "create_time": b.get("createTime"),
+                "finish_time": b.get("finishTime"),
+                "log_url": b.get("logUrl"),
+            }
+            for b in resp.get("builds", [])
+        ]
+
+    def trigger_build(self, trigger_id: str, branch: str = "main") -> Dict[str, Any]:
+        body = {"source": {"branchName": branch}}
+        try:
+            resp = self._service.projects().triggers().run(projectId=self._project, triggerId=trigger_id, body=body).execute()
+        except Exception as exc:
+            raise GCPClientError(f"trigger_build failed: {exc}") from exc
+        log.info("gcp_build_triggered", trigger_id=trigger_id, branch=branch)
+        return {"build_id": resp.get("name", "").split("/")[-1], "trigger_id": trigger_id, "branch": branch, "status": "QUEUED"}
+
+
 class GCPContainerClient:
     """GCP Kubernetes Engine (GKE) operations used by MCP tool handlers."""
 

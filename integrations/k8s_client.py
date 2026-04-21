@@ -100,6 +100,8 @@ class KubernetesClient:
         _get_k8s_config()          # no-op after first call — cached
         self._core = k8s_client.CoreV1Api()
         self._apps = k8s_client.AppsV1Api()
+        self._batch = k8s_client.BatchV1Api()
+        self._networking = k8s_client.NetworkingV1Api()
 
     # ── Pods ──────────────────────────────────────────────────────────────────
 
@@ -456,6 +458,138 @@ class KubernetesClient:
                 }
             )
         return nodes
+
+    # ── Namespaces ────────────────────────────────────────────────────────────
+
+    def list_namespaces(self) -> List[Dict[str, Any]]:
+        try:
+            items = _paginate(self._core.list_namespace)
+        except ApiException as exc:
+            raise K8sClientError(f"list_namespace failed: {exc}") from exc
+        return [
+            {
+                "name": ns.metadata.name,
+                "status": ns.status.phase,
+                "labels": ns.metadata.labels or {},
+                "created": str(ns.metadata.creation_timestamp),
+            }
+            for ns in items
+        ]
+
+    def create_namespace(self, name: str, labels: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        body = k8s_client.V1Namespace(
+            metadata=k8s_client.V1ObjectMeta(name=name, labels=labels or {})
+        )
+        try:
+            result = self._core.create_namespace(body=body, _request_timeout=_K8S_REQUEST_TIMEOUT)
+        except ApiException as exc:
+            raise K8sClientError(f"create_namespace failed: {exc}") from exc
+        log.info("k8s_namespace_created", name=name)
+        return {"name": result.metadata.name, "status": result.status.phase}
+
+    # ── ConfigMaps ────────────────────────────────────────────────────────────
+
+    def get_configmap(self, name: str, namespace: str = "default") -> Dict[str, Any]:
+        try:
+            cm = self._core.read_namespaced_config_map(name=name, namespace=namespace, _request_timeout=_K8S_REQUEST_TIMEOUT)
+        except ApiException as exc:
+            raise K8sClientError(f"ConfigMap '{name}' not found: {exc}") from exc
+        return {"name": cm.metadata.name, "namespace": namespace, "data": cm.data or {}, "keys": list((cm.data or {}).keys())}
+
+    def apply_configmap(self, name: str, data: Dict[str, str], namespace: str = "default") -> Dict[str, Any]:
+        body = k8s_client.V1ConfigMap(
+            metadata=k8s_client.V1ObjectMeta(name=name, namespace=namespace),
+            data=data,
+        )
+        try:
+            self._core.read_namespaced_config_map(name=name, namespace=namespace, _request_timeout=_K8S_REQUEST_TIMEOUT)
+            result = self._core.replace_namespaced_config_map(name=name, namespace=namespace, body=body, _request_timeout=_K8S_REQUEST_TIMEOUT)
+            action = "updated"
+        except ApiException as exc:
+            if exc.status == 404:
+                result = self._core.create_namespaced_config_map(namespace=namespace, body=body, _request_timeout=_K8S_REQUEST_TIMEOUT)
+                action = "created"
+            else:
+                raise K8sClientError(f"apply_configmap failed: {exc}") from exc
+        log.info("k8s_configmap_applied", name=name, namespace=namespace, action=action)
+        return {"name": result.metadata.name, "namespace": namespace, "action": action, "keys": list(data.keys())}
+
+    # ── Secrets ───────────────────────────────────────────────────────────────
+
+    def list_secrets(self, namespace: str = "default") -> List[Dict[str, Any]]:
+        try:
+            items = _paginate(self._core.list_namespaced_secret, namespace=namespace)
+        except ApiException as exc:
+            raise K8sClientError(f"list_namespaced_secret failed: {exc}") from exc
+        return [
+            {
+                "name": s.metadata.name,
+                "namespace": namespace,
+                "type": s.type,
+                "keys": list((s.data or {}).keys()),
+            }
+            for s in items
+        ]
+
+    # ── Jobs ──────────────────────────────────────────────────────────────────
+
+    def list_jobs(self, namespace: str = "default") -> List[Dict[str, Any]]:
+        try:
+            items = _paginate(self._batch.list_namespaced_job, namespace=namespace)
+        except ApiException as exc:
+            raise K8sClientError(f"list_namespaced_job failed: {exc}") from exc
+        return [
+            {
+                "name": j.metadata.name,
+                "namespace": namespace,
+                "active": j.status.active or 0,
+                "succeeded": j.status.succeeded or 0,
+                "failed": j.status.failed or 0,
+                "start_time": str(j.status.start_time) if j.status.start_time else None,
+                "completion_time": str(j.status.completion_time) if j.status.completion_time else None,
+            }
+            for j in items
+        ]
+
+    def list_cronjobs(self, namespace: str = "default") -> List[Dict[str, Any]]:
+        try:
+            items = _paginate(self._batch.list_namespaced_cron_job, namespace=namespace)
+        except ApiException as exc:
+            raise K8sClientError(f"list_namespaced_cron_job failed: {exc}") from exc
+        return [
+            {
+                "name": cj.metadata.name,
+                "namespace": namespace,
+                "schedule": cj.spec.schedule,
+                "suspended": cj.spec.suspend or False,
+                "last_schedule": str(cj.status.last_schedule_time) if cj.status.last_schedule_time else None,
+                "active_jobs": len(cj.status.active or []),
+            }
+            for cj in items
+        ]
+
+    # ── Ingress ───────────────────────────────────────────────────────────────
+
+    def list_ingresses(self, namespace: str = "default") -> List[Dict[str, Any]]:
+        try:
+            items = _paginate(self._networking.list_namespaced_ingress, namespace=namespace)
+        except ApiException as exc:
+            raise K8sClientError(f"list_namespaced_ingress failed: {exc}") from exc
+        result = []
+        for ing in items:
+            rules = []
+            for r in (ing.spec.rules or []):
+                host = r.host or "*"
+                paths = [p.path for p in (r.http.paths if r.http else [])] if r.http else []
+                rules.append({"host": host, "paths": paths})
+            result.append({
+                "name": ing.metadata.name,
+                "namespace": namespace,
+                "class": ing.spec.ingress_class_name,
+                "rules": rules,
+                "tls": [{"hosts": t.hosts, "secret": t.secret_name} for t in (ing.spec.tls or [])],
+            })
+        return result
 
     # ── Delete Pod ────────────────────────────────────────────────────────────
 

@@ -93,6 +93,22 @@ class Settings(BaseSettings):
     helm_binary: str = Field(default="helm", env="HELM_BINARY")
     helm_timeout_seconds: int = Field(default=300, env="HELM_TIMEOUT_SECONDS")
 
+    # ── ArgoCD ───────────────────────────────────────────────────────────────
+    argocd_server_url: Optional[str] = Field(default=None, env="ARGOCD_SERVER_URL")
+    argocd_auth_token: Optional[str] = Field(default=None, env="ARGOCD_AUTH_TOKEN")
+    argocd_insecure: bool = Field(default=False, env="ARGOCD_INSECURE")
+
+    # ── HashiCorp Vault ───────────────────────────────────────────────────────
+    vault_addr: Optional[str] = Field(default=None, env="VAULT_ADDR")
+    vault_token: Optional[str] = Field(default=None, env="VAULT_TOKEN")
+    vault_namespace: Optional[str] = Field(default=None, env="VAULT_NAMESPACE")
+    vault_mount: str = Field(default="secret", env="VAULT_MOUNT")
+
+    # ── PagerDuty ─────────────────────────────────────────────────────────────
+    pagerduty_api_key: Optional[str] = Field(default=None, env="PAGERDUTY_API_KEY")
+    pagerduty_email: Optional[str] = Field(default=None, env="PAGERDUTY_EMAIL")
+    pagerduty_service_id: Optional[str] = Field(default=None, env="PAGERDUTY_SERVICE_ID")
+
     # ── Slack ────────────────────────────────────────────────────────────────
     slack_webhook_url: Optional[str] = Field(
         default=None,

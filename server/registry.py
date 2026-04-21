@@ -127,23 +127,21 @@ def build_registry() -> ToolRegistry:
         create_pr, get_repo, list_issues, trigger_workflow, create_release,
         create_issue, merge_pr, get_workflow_run,
     )
-    from tools.aws import ec2, s3, lambda_tools, rds, ec2_lifecycle, s3_objects, cloudwatch, secrets, networking
+    from tools.aws import (
+        ec2, s3, lambda_tools, rds, ec2_lifecycle, s3_objects, cloudwatch,
+        secrets, networking, iam, rds_crud, ecs, cost, ecr, alb,
+    )
     from tools.kubernetes import (
-        deploy,
-        get_pods,
-        get_logs,
-        get_events,
-        scale,
-        rollout_restart,
-        rollout_status,
-        get_deployments,
-        get_services,
-        get_nodes,
-        delete_pod,
+        deploy, get_pods, get_logs, get_events, scale, rollout_restart,
+        rollout_status, get_deployments, get_services, get_nodes, delete_pod,
+        namespace, configmap, secret, jobs, ingress,
     )
     from tools.helm import helm_tools
     from tools.azure import azure_tools
     from tools.gcp import gcp_tools
+    from tools.argocd import argocd_tools
+    from tools.vault import vault_tools
+    from tools.pagerduty import pagerduty_tools
 
     registry = ToolRegistry()
 
@@ -497,6 +495,41 @@ def build_registry() -> ToolRegistry:
         handler=delete_pod.handler,
         tags=["kubernetes", "k8s", "debug"],
     ))
+    # K8s namespaces
+    registry.register(ToolEntry(name=namespace.LIST_TOOL_NAME, description=namespace.LIST_TOOL_DESCRIPTION, input_schema=namespace.LIST_TOOL_INPUT_SCHEMA, handler=namespace.list_handler, tags=["kubernetes", "k8s"]))
+    registry.register(ToolEntry(name=namespace.CREATE_TOOL_NAME, description=namespace.CREATE_TOOL_DESCRIPTION, input_schema=namespace.CREATE_TOOL_INPUT_SCHEMA, handler=namespace.create_handler, tags=["kubernetes", "k8s"]))
+    # K8s configmaps
+    registry.register(ToolEntry(name=configmap.GET_TOOL_NAME, description=configmap.GET_TOOL_DESCRIPTION, input_schema=configmap.GET_TOOL_INPUT_SCHEMA, handler=configmap.get_handler, tags=["kubernetes", "k8s", "config"]))
+    registry.register(ToolEntry(name=configmap.APPLY_TOOL_NAME, description=configmap.APPLY_TOOL_DESCRIPTION, input_schema=configmap.APPLY_TOOL_INPUT_SCHEMA, handler=configmap.apply_handler, tags=["kubernetes", "k8s", "config"]))
+    # K8s secrets (read-only key listing)
+    registry.register(ToolEntry(name=secret.TOOL_NAME, description=secret.TOOL_DESCRIPTION, input_schema=secret.TOOL_INPUT_SCHEMA, handler=secret.handler, tags=["kubernetes", "k8s", "security"]))
+    # K8s jobs
+    registry.register(ToolEntry(name=jobs.LIST_JOBS_TOOL_NAME, description=jobs.LIST_JOBS_TOOL_DESCRIPTION, input_schema=jobs.LIST_JOBS_TOOL_INPUT_SCHEMA, handler=jobs.list_jobs_handler, tags=["kubernetes", "k8s", "batch"]))
+    registry.register(ToolEntry(name=jobs.LIST_CRONJOBS_TOOL_NAME, description=jobs.LIST_CRONJOBS_TOOL_DESCRIPTION, input_schema=jobs.LIST_CRONJOBS_TOOL_INPUT_SCHEMA, handler=jobs.list_cronjobs_handler, tags=["kubernetes", "k8s", "batch"]))
+    # K8s ingress
+    registry.register(ToolEntry(name=ingress.TOOL_NAME, description=ingress.TOOL_DESCRIPTION, input_schema=ingress.TOOL_INPUT_SCHEMA, handler=ingress.handler, tags=["kubernetes", "k8s", "networking"]))
+    # AWS IAM
+    registry.register(ToolEntry(name=iam.LIST_ROLES_TOOL_NAME, description=iam.LIST_ROLES_TOOL_DESCRIPTION, input_schema=iam.LIST_ROLES_TOOL_INPUT_SCHEMA, handler=iam.list_roles_handler, tags=["aws", "iam", "security"]))
+    registry.register(ToolEntry(name=iam.LIST_POLICIES_TOOL_NAME, description=iam.LIST_POLICIES_TOOL_DESCRIPTION, input_schema=iam.LIST_POLICIES_TOOL_INPUT_SCHEMA, handler=iam.list_policies_handler, tags=["aws", "iam", "security"]))
+    registry.register(ToolEntry(name=iam.SIMULATE_TOOL_NAME, description=iam.SIMULATE_TOOL_DESCRIPTION, input_schema=iam.SIMULATE_TOOL_INPUT_SCHEMA, handler=iam.simulate_handler, tags=["aws", "iam", "security"]))
+    # AWS RDS CRUD
+    registry.register(ToolEntry(name=rds_crud.CREATE_TOOL_NAME, description=rds_crud.CREATE_TOOL_DESCRIPTION, input_schema=rds_crud.CREATE_TOOL_INPUT_SCHEMA, handler=rds_crud.create_handler, tags=["aws", "rds", "database"], timeout_seconds=600))
+    registry.register(ToolEntry(name=rds_crud.SNAPSHOT_TOOL_NAME, description=rds_crud.SNAPSHOT_TOOL_DESCRIPTION, input_schema=rds_crud.SNAPSHOT_TOOL_INPUT_SCHEMA, handler=rds_crud.snapshot_handler, tags=["aws", "rds", "database"]))
+    registry.register(ToolEntry(name=rds_crud.RESTORE_TOOL_NAME, description=rds_crud.RESTORE_TOOL_DESCRIPTION, input_schema=rds_crud.RESTORE_TOOL_INPUT_SCHEMA, handler=rds_crud.restore_handler, tags=["aws", "rds", "database"], timeout_seconds=600))
+    # AWS ECS
+    registry.register(ToolEntry(name=ecs.LIST_CLUSTERS_TOOL_NAME, description=ecs.LIST_CLUSTERS_TOOL_DESCRIPTION, input_schema=ecs.LIST_CLUSTERS_TOOL_INPUT_SCHEMA, handler=ecs.list_clusters_handler, tags=["aws", "ecs", "compute"]))
+    registry.register(ToolEntry(name=ecs.LIST_SERVICES_TOOL_NAME, description=ecs.LIST_SERVICES_TOOL_DESCRIPTION, input_schema=ecs.LIST_SERVICES_TOOL_INPUT_SCHEMA, handler=ecs.list_services_handler, tags=["aws", "ecs", "compute"]))
+    registry.register(ToolEntry(name=ecs.LIST_TASKS_TOOL_NAME, description=ecs.LIST_TASKS_TOOL_DESCRIPTION, input_schema=ecs.LIST_TASKS_TOOL_INPUT_SCHEMA, handler=ecs.list_tasks_handler, tags=["aws", "ecs", "compute"]))
+    registry.register(ToolEntry(name=ecs.DEPLOY_TOOL_NAME, description=ecs.DEPLOY_TOOL_DESCRIPTION, input_schema=ecs.DEPLOY_TOOL_INPUT_SCHEMA, handler=ecs.deploy_handler, tags=["aws", "ecs", "compute"]))
+    # AWS Cost Explorer
+    registry.register(ToolEntry(name=cost.COST_BY_SERVICE_TOOL_NAME, description=cost.COST_BY_SERVICE_TOOL_DESCRIPTION, input_schema=cost.COST_BY_SERVICE_TOOL_INPUT_SCHEMA, handler=cost.cost_by_service_handler, tags=["aws", "cost", "finops"]))
+    registry.register(ToolEntry(name=cost.MONTHLY_TOTAL_TOOL_NAME, description=cost.MONTHLY_TOTAL_TOOL_DESCRIPTION, input_schema=cost.MONTHLY_TOTAL_TOOL_INPUT_SCHEMA, handler=cost.monthly_total_handler, tags=["aws", "cost", "finops"]))
+    # AWS ECR
+    registry.register(ToolEntry(name=ecr.LIST_REPOS_TOOL_NAME, description=ecr.LIST_REPOS_TOOL_DESCRIPTION, input_schema=ecr.LIST_REPOS_TOOL_INPUT_SCHEMA, handler=ecr.list_repos_handler, tags=["aws", "ecr", "containers"]))
+    registry.register(ToolEntry(name=ecr.LIST_IMAGES_TOOL_NAME, description=ecr.LIST_IMAGES_TOOL_DESCRIPTION, input_schema=ecr.LIST_IMAGES_TOOL_INPUT_SCHEMA, handler=ecr.list_images_handler, tags=["aws", "ecr", "containers"]))
+    # AWS ALB
+    registry.register(ToolEntry(name=alb.ALB_LIST_TOOL_NAME, description=alb.ALB_LIST_TOOL_DESCRIPTION, input_schema=alb.ALB_LIST_TOOL_INPUT_SCHEMA, handler=alb.alb_list_handler, tags=["aws", "networking", "alb"]))
+    registry.register(ToolEntry(name=alb.TG_LIST_TOOL_NAME, description=alb.TG_LIST_TOOL_DESCRIPTION, input_schema=alb.TG_LIST_TOOL_INPUT_SCHEMA, handler=alb.tg_list_handler, tags=["aws", "networking", "alb"]))
 
     # ── Helm ───────────────────────────────────────────────────────────────
     registry.register(ToolEntry(
@@ -592,6 +625,33 @@ def build_registry() -> ToolRegistry:
         handler=gcp_tools.gke_handler,
         tags=["gcp", "cloud", "kubernetes", "multicloud"],
     ))
+    # Azure completions
+    registry.register(ToolEntry(name=azure_tools.AKS_LIST_TOOL_NAME, description=azure_tools.AKS_LIST_TOOL_DESCRIPTION, input_schema=azure_tools.AKS_LIST_TOOL_INPUT_SCHEMA, handler=azure_tools.aks_list_handler, tags=["azure", "cloud", "kubernetes", "multicloud"]))
+    registry.register(ToolEntry(name=azure_tools.ACR_LIST_TOOL_NAME, description=azure_tools.ACR_LIST_TOOL_DESCRIPTION, input_schema=azure_tools.ACR_LIST_TOOL_INPUT_SCHEMA, handler=azure_tools.acr_list_handler, tags=["azure", "cloud", "containers", "multicloud"]))
+    registry.register(ToolEntry(name=azure_tools.KV_GET_TOOL_NAME, description=azure_tools.KV_GET_TOOL_DESCRIPTION, input_schema=azure_tools.KV_GET_TOOL_INPUT_SCHEMA, handler=azure_tools.kv_get_handler, tags=["azure", "cloud", "secrets", "multicloud"]))
+    registry.register(ToolEntry(name=azure_tools.KV_SET_TOOL_NAME, description=azure_tools.KV_SET_TOOL_DESCRIPTION, input_schema=azure_tools.KV_SET_TOOL_INPUT_SCHEMA, handler=azure_tools.kv_set_handler, tags=["azure", "cloud", "secrets", "multicloud"]))
+    # GCP completions
+    registry.register(ToolEntry(name=gcp_tools.CLOUDRUN_TOOL_NAME, description=gcp_tools.CLOUDRUN_TOOL_DESCRIPTION, input_schema=gcp_tools.CLOUDRUN_TOOL_INPUT_SCHEMA, handler=gcp_tools.cloudrun_handler, tags=["gcp", "cloud", "serverless", "multicloud"]))
+    registry.register(ToolEntry(name=gcp_tools.CLOUDSQL_TOOL_NAME, description=gcp_tools.CLOUDSQL_TOOL_DESCRIPTION, input_schema=gcp_tools.CLOUDSQL_TOOL_INPUT_SCHEMA, handler=gcp_tools.cloudsql_handler, tags=["gcp", "cloud", "database", "multicloud"]))
+    registry.register(ToolEntry(name=gcp_tools.CLOUDBUILD_LIST_TOOL_NAME, description=gcp_tools.CLOUDBUILD_LIST_TOOL_DESCRIPTION, input_schema=gcp_tools.CLOUDBUILD_LIST_TOOL_INPUT_SCHEMA, handler=gcp_tools.cloudbuild_list_handler, tags=["gcp", "cloud", "ci", "multicloud"]))
+    registry.register(ToolEntry(name=gcp_tools.CLOUDBUILD_TRIGGER_TOOL_NAME, description=gcp_tools.CLOUDBUILD_TRIGGER_TOOL_DESCRIPTION, input_schema=gcp_tools.CLOUDBUILD_TRIGGER_TOOL_INPUT_SCHEMA, handler=gcp_tools.cloudbuild_trigger_handler, tags=["gcp", "cloud", "ci", "multicloud"]))
+
+    # ── ArgoCD ─────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=argocd_tools.LIST_TOOL_NAME, description=argocd_tools.LIST_TOOL_DESCRIPTION, input_schema=argocd_tools.LIST_TOOL_INPUT_SCHEMA, handler=argocd_tools.list_handler, tags=["argocd", "gitops", "kubernetes"]))
+    registry.register(ToolEntry(name=argocd_tools.STATUS_TOOL_NAME, description=argocd_tools.STATUS_TOOL_DESCRIPTION, input_schema=argocd_tools.STATUS_TOOL_INPUT_SCHEMA, handler=argocd_tools.status_handler, tags=["argocd", "gitops", "kubernetes"]))
+    registry.register(ToolEntry(name=argocd_tools.SYNC_TOOL_NAME, description=argocd_tools.SYNC_TOOL_DESCRIPTION, input_schema=argocd_tools.SYNC_TOOL_INPUT_SCHEMA, handler=argocd_tools.sync_handler, tags=["argocd", "gitops", "kubernetes"]))
+    registry.register(ToolEntry(name=argocd_tools.ROLLBACK_TOOL_NAME, description=argocd_tools.ROLLBACK_TOOL_DESCRIPTION, input_schema=argocd_tools.ROLLBACK_TOOL_INPUT_SCHEMA, handler=argocd_tools.rollback_handler, tags=["argocd", "gitops", "kubernetes"]))
+
+    # ── HashiCorp Vault ────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=vault_tools.READ_TOOL_NAME, description=vault_tools.READ_TOOL_DESCRIPTION, input_schema=vault_tools.READ_TOOL_INPUT_SCHEMA, handler=vault_tools.read_handler, tags=["vault", "secrets", "security"]))
+    registry.register(ToolEntry(name=vault_tools.WRITE_TOOL_NAME, description=vault_tools.WRITE_TOOL_DESCRIPTION, input_schema=vault_tools.WRITE_TOOL_INPUT_SCHEMA, handler=vault_tools.write_handler, tags=["vault", "secrets", "security"]))
+    registry.register(ToolEntry(name=vault_tools.LIST_TOOL_NAME, description=vault_tools.LIST_TOOL_DESCRIPTION, input_schema=vault_tools.LIST_TOOL_INPUT_SCHEMA, handler=vault_tools.list_handler, tags=["vault", "secrets", "security"]))
+
+    # ── PagerDuty ──────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=pagerduty_tools.LIST_TOOL_NAME, description=pagerduty_tools.LIST_TOOL_DESCRIPTION, input_schema=pagerduty_tools.LIST_TOOL_INPUT_SCHEMA, handler=pagerduty_tools.list_handler, tags=["pagerduty", "incident", "oncall"]))
+    registry.register(ToolEntry(name=pagerduty_tools.ACK_TOOL_NAME, description=pagerduty_tools.ACK_TOOL_DESCRIPTION, input_schema=pagerduty_tools.ACK_TOOL_INPUT_SCHEMA, handler=pagerduty_tools.ack_handler, tags=["pagerduty", "incident", "oncall"]))
+    registry.register(ToolEntry(name=pagerduty_tools.RESOLVE_TOOL_NAME, description=pagerduty_tools.RESOLVE_TOOL_DESCRIPTION, input_schema=pagerduty_tools.RESOLVE_TOOL_INPUT_SCHEMA, handler=pagerduty_tools.resolve_handler, tags=["pagerduty", "incident", "oncall"]))
+    registry.register(ToolEntry(name=pagerduty_tools.CREATE_TOOL_NAME, description=pagerduty_tools.CREATE_TOOL_DESCRIPTION, input_schema=pagerduty_tools.CREATE_TOOL_INPUT_SCHEMA, handler=pagerduty_tools.create_handler, tags=["pagerduty", "incident", "oncall"]))
 
     log.info("registry_built", total_tools=len(registry))
     return registry

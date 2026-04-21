@@ -70,3 +70,87 @@ GKE_TOOL_INPUT_SCHEMA: Dict[str, Any] = {
 
 def gke_handler(zone: str = "-") -> List[Dict[str, Any]]:
     return GCPContainerClient().list_clusters(zone=zone)
+
+
+# ── gcp_cloudrun_list_services ────────────────────────────────────────────────
+
+CLOUDRUN_TOOL_NAME = "gcp_cloudrun_list_services"
+CLOUDRUN_TOOL_DESCRIPTION = (
+    "Lists Google Cloud Run services, optionally filtered by region. "
+    "Shows name, URL, region, and current condition status."
+)
+CLOUDRUN_TOOL_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "region": {"type": "string", "description": "GCP region (e.g. 'us-central1'). Use '-' for all regions.", "default": "-"},
+    },
+    "additionalProperties": False,
+}
+
+
+def cloudrun_handler(region: str = "-") -> List[Dict[str, Any]]:
+    from integrations.gcp_client import GCPCloudRunClient
+    return GCPCloudRunClient().list_services(region=region)
+
+
+# ── gcp_cloudsql_list_instances ───────────────────────────────────────────────
+
+CLOUDSQL_TOOL_NAME = "gcp_cloudsql_list_instances"
+CLOUDSQL_TOOL_DESCRIPTION = (
+    "Lists Google Cloud SQL instances in the project. "
+    "Shows name, database version, state, region, tier, and primary IP address."
+)
+CLOUDSQL_TOOL_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": False,
+}
+
+
+def cloudsql_handler() -> List[Dict[str, Any]]:
+    from integrations.gcp_client import GCPCloudSQLClient
+    return GCPCloudSQLClient().list_instances()
+
+
+# ── gcp_cloudbuild_list_builds ────────────────────────────────────────────────
+
+CLOUDBUILD_LIST_TOOL_NAME = "gcp_cloudbuild_list_builds"
+CLOUDBUILD_LIST_TOOL_DESCRIPTION = (
+    "Lists recent Google Cloud Build executions. "
+    "Shows build ID, status, source repo, branch, timestamps, and log URL."
+)
+CLOUDBUILD_LIST_TOOL_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "limit": {"type": "integer", "description": "Maximum builds to return (default: 20).", "default": 20},
+    },
+    "additionalProperties": False,
+}
+
+
+def cloudbuild_list_handler(limit: int = 20) -> List[Dict[str, Any]]:
+    from integrations.gcp_client import GCPCloudBuildClient
+    return GCPCloudBuildClient().list_builds(limit=limit)
+
+
+# ── gcp_cloudbuild_trigger ────────────────────────────────────────────────────
+
+CLOUDBUILD_TRIGGER_TOOL_NAME = "gcp_cloudbuild_trigger"
+CLOUDBUILD_TRIGGER_TOOL_DESCRIPTION = (
+    "Triggers a Cloud Build trigger by ID on a specified branch. "
+    "Returns the build ID for status tracking."
+)
+CLOUDBUILD_TRIGGER_TOOL_INPUT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "trigger_id": {"type": "string", "description": "Cloud Build trigger ID."},
+        "branch": {"type": "string", "description": "Branch to build (default: main).", "default": "main"},
+    },
+    "required": ["trigger_id"],
+    "additionalProperties": False,
+}
+
+
+def cloudbuild_trigger_handler(trigger_id: str, branch: str = "main") -> Dict[str, Any]:
+    from integrations.gcp_client import GCPCloudBuildClient
+    return GCPCloudBuildClient().trigger_build(trigger_id, branch)
