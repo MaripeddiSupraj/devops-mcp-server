@@ -2,7 +2,11 @@
 
 > **MCP name: io.github.maripeddisupraj/devops-mcp-server**
 >
-> A **production-grade Model Context Protocol (MCP) server** that exposes Terraform, GitHub, AWS, and Kubernetes as structured JSON tool APIs — designed for AI agents (LangGraph, AutoGen, custom agents) to automate DevOps workflows end-to-end.
+> A **production-grade Model Context Protocol (MCP) server** that exposes 103 tools across Terraform, GitHub, AWS, Kubernetes, Helm, Azure, GCP, ArgoCD, HashiCorp Vault, and PagerDuty as structured JSON tool APIs — designed for AI agents (LangGraph, AutoGen, Claude) to automate DevOps workflows end-to-end.
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![MCP](https://img.shields.io/badge/MCP-1.0-green)](https://modelcontextprotocol.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -14,13 +18,19 @@
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Running the Server](#running-the-server)
+- [Claude Desktop Integration](#claude-desktop-integration)
 - [Docker](#docker)
-- [API Reference](#api-reference)
 - [Tool Reference](#tool-reference)
   - [Terraform Tools](#terraform-tools)
   - [GitHub Tools](#github-tools)
   - [AWS Tools](#aws-tools)
   - [Kubernetes Tools](#kubernetes-tools)
+  - [Helm Tools](#helm-tools)
+  - [Azure Tools](#azure-tools)
+  - [GCP Tools](#gcp-tools)
+  - [ArgoCD Tools](#argocd-tools)
+  - [HashiCorp Vault Tools](#hashicorp-vault-tools)
+  - [PagerDuty Tools](#pagerduty-tools)
 - [Example Workflows](#example-workflows)
 - [Adding a New Tool](#adding-a-new-tool)
 - [Running Tests](#running-tests)
@@ -31,61 +41,65 @@
 
 ## What is This?
 
-This server implements the [Model Context Protocol](https://modelcontextprotocol.io) — a standard that lets AI agents discover and invoke tools over HTTP. Instead of hard-coding API calls into your AI agent, you point it at this server and it dynamically discovers what DevOps operations are available.
+This server implements the [Model Context Protocol](https://modelcontextprotocol.io) — a standard that lets AI agents discover and invoke tools over HTTP or stdio. Instead of hard-coding SDK calls into your AI agent, you point it at this server and it dynamically discovers what DevOps operations are available.
 
 **Without MCP:**
 
 ```text
 Agent → custom boto3 code → AWS
 Agent → custom subprocess → Terraform
-Agent → custom PyGithub code → GitHub
+Agent → custom SDK calls → Azure / GCP / K8s / ...
 ```
 
 **With MCP:**
 
 ```text
-Agent → POST /tools/execute → MCP Server → AWS / Terraform / GitHub / Kubernetes
+Agent → POST /tools/execute → MCP Server → AWS / Terraform / GitHub / K8s / Azure / GCP / ...
 ```
 
-The agent calls one endpoint with a tool name and JSON inputs. The server handles all SDK complexity, authentication, validation, and error formatting.
+The agent calls one endpoint with a tool name and JSON inputs. The server handles all SDK complexity, authentication, validation, and error formatting across **10 platforms with 103 tools**.
 
 ---
 
 ## Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                        AI Agent                             │
-│         (LangGraph / AutoGen / custom agent)                │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ POST /tools/execute
+┌─────────────────────────────────────────────────────────────────┐
+│                          AI Agent                               │
+│          (Claude / LangGraph / AutoGen / custom)                │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ POST /tools/execute  OR  stdio (MCP)
                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    FastAPI MCP Server                        │
-│                                                             │
-│   GET /tools          →  ToolRegistry (list all tools)      │
-│   POST /tools/execute →  ToolExecutor (validate + run)      │
-│   GET /tools/{name}   →  ToolRegistry (describe one tool)   │
-└──────────┬──────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     FastAPI MCP Server                          │
+│                                                                 │
+│   GET /tools          →  ToolRegistry (list all 103 tools)      │
+│   POST /tools/execute →  ToolExecutor (validate + run)          │
+│   GET /tools/{name}   →  ToolRegistry (describe one tool)       │
+│   GET /metrics        →  Prometheus metrics                     │
+└──────────┬──────────────────────────────────────────────────────┘
            │
-    ┌──────┴───────────────────────────────────────┐
-    │              Tool Handlers                    │
-    │  terraform/  github/  aws/  kubernetes/       │
-    └──────┬───────────────────────────────────────┘
+    ┌──────┴──────────────────────────────────────────────────┐
+    │                    Tool Handlers (10 services)           │
+    │  terraform/  github/  aws/  kubernetes/  helm/           │
+    │  azure/      gcp/     argocd/  vault/    pagerduty/      │
+    └──────┬──────────────────────────────────────────────────┘
            │
-    ┌──────┴───────────────────────────────────────┐
-    │              Integrations                     │
-    │  subprocess  PyGithub  boto3  k8s-client      │
-    └──────────────────────────────────────────────┘
+    ┌──────┴──────────────────────────────────────────────────┐
+    │                      Integrations                        │
+    │  subprocess(tf/helm)  PyGithub   boto3   k8s-client     │
+    │  azure-sdk            google-cloud-sdk   httpx(rest)    │
+    └─────────────────────────────────────────────────────────┘
 ```
 
 **Request lifecycle:**
 
 1. Agent sends `POST /tools/execute` with `tool_name` and `inputs`
-2. `ToolExecutor` validates inputs against the tool's JSON schema
-3. Handler function is resolved from `ToolRegistry`
-4. Handler calls the appropriate integration (boto3, PyGithub, etc.)
+2. `ToolExecutor` validates inputs against the tool's JSON Schema
+3. Handler is resolved from `ToolRegistry`
+4. Handler calls the integration (boto3, PyGithub, subprocess, httpx, etc.)
 5. Result wrapped in `{"status": "success"|"error", "data": ..., "error": ...}`
+6. Execution logged to SQLite audit DB + optional Slack notification
 
 ---
 
@@ -95,396 +109,278 @@ The agent calls one endpoint with a tool name and JSON inputs. The server handle
 devops-mcp-server/
 │
 ├── server/
-│   ├── main.py          # FastAPI app — all HTTP routes
-│   ├── mcp_stdio.py     # MCP stdio transport for Claude Desktop
-│   ├── registry.py      # Tool registration + build_registry()
-│   ├── jobs.py          # Background job store + TTL cleanup
-│   └── schemas.py       # Pydantic models for request/response
-│
-├── tools/               # One file per tool (metadata + handler)
-│   ├── terraform/
-│   │   ├── plan.py
-│   │   ├── apply.py
-│   │   └── destroy.py
-│   ├── github/
-│   │   ├── create_pr.py
-│   │   ├── get_repo.py
-│   │   ├── list_issues.py
-│   │   ├── trigger_workflow.py
-│   │   └── create_release.py
-│   ├── aws/
-│   │   ├── ec2.py
-│   │   ├── s3.py
-│   │   ├── lambda_tools.py
-│   │   └── rds.py
-│   └── kubernetes/
-│       ├── deploy.py
-│       ├── get_pods.py
-│       ├── get_logs.py
-│       ├── get_events.py
-│       ├── scale.py
-│       ├── rollout_restart.py
-│       ├── rollout_status.py
-│       ├── get_deployments.py
-│       ├── get_services.py
-│       ├── get_nodes.py
-│       └── delete_pod.py
+│   ├── main.py              # FastAPI app — all HTTP routes
+│   ├── mcp_stdio.py         # MCP stdio transport for Claude Desktop
+│   ├── registry.py          # Tool registration — build_registry()
+│   ├── executor.py          # ToolExecutor — validate + dispatch
+│   └── schemas.py           # Pydantic request/response models
 │
 ├── core/
-│   ├── config.py        # Pydantic-settings (env vars)
-│   ├── logger.py        # Structured JSON logging (structlog)
-│   ├── audit.py         # SQLite audit log
-│   ├── auth.py          # Credential helpers
-│   ├── executor.py      # Schema validation + execution engine
-│   └── startup.py       # Startup credential checks
+│   ├── config.py            # pydantic-settings — all env vars
+│   ├── auth.py              # API key middleware + cloud credential helpers
+│   ├── logger.py            # structlog structured logging
+│   └── audit.py             # SQLite audit trail (WAL mode)
+│
+├── tools/
+│   ├── terraform/           # plan, apply, destroy, init, validate, output, state_list
+│   ├── github/              # create_pr, get_repo, list_issues, trigger_workflow,
+│   │                        #   create_release, create_issue, merge_pr, get_workflow_run
+│   ├── aws/                 # ec2, s3, lambda, rds, ec2_lifecycle, s3_objects,
+│   │                        #   cloudwatch, secrets, networking, iam, rds_crud,
+│   │                        #   ecs, cost, ecr, alb
+│   ├── kubernetes/          # deploy, get_pods, get_logs, get_events, scale,
+│   │                        #   rollout_restart, rollout_status, get_deployments,
+│   │                        #   get_services, get_nodes, delete_pod,
+│   │                        #   namespace, configmap, secret, jobs, ingress
+│   ├── helm/                # list, install, upgrade, rollback, status
+│   ├── azure/               # rg_list, vm_list, vm_start, vm_stop,
+│   │                        #   aks_list, acr_list, kv_get, kv_set
+│   ├── gcp/                 # instances, buckets, gke, cloudrun,
+│   │                        #   cloudsql, cloudbuild_list, cloudbuild_trigger
+│   ├── argocd/              # list, status, sync, rollback
+│   ├── vault/               # read, write, list
+│   └── pagerduty/           # list_incidents, acknowledge, resolve, create
 │
 ├── integrations/
-│   ├── terraform_runner.py  # subprocess wrapper (no shell=True)
+│   ├── terraform_runner.py  # Terraform subprocess wrapper
+│   ├── helm_runner.py       # Helm subprocess wrapper
+│   ├── aws_client.py        # boto3 client classes (13 services)
 │   ├── github_client.py     # PyGithub wrapper
-│   ├── aws_client.py        # boto3 EC2/S3/Lambda/RDS
-│   ├── k8s_client.py        # kubernetes-client wrapper
-│   └── slack_client.py      # Slack webhook notifications
+│   ├── k8s_client.py        # kubernetes-client/python wrapper
+│   ├── azure_client.py      # Azure SDK client classes
+│   ├── gcp_client.py        # GCP SDK client classes
+│   ├── argocd_client.py     # ArgoCD REST API (httpx)
+│   ├── vault_client.py      # Vault KV v2 REST API (httpx)
+│   └── pagerduty_client.py  # PagerDuty REST API v2 (httpx)
 │
-├── tests/               # 152 tests, no live service calls
-├── infra/               # Prometheus + Grafana configs
-├── .env.example
+├── tests/
 ├── Dockerfile
 ├── docker-compose.yml
+├── pyproject.toml           # PyPI packaging
 ├── requirements.txt
-├── CONTRIBUTING.md
-└── SECURITY.md
+└── .env.example
 ```
 
 ---
 
 ## Quick Start
 
-There are two ways to use this server — pick the one that fits your use case:
-
-| Mode | Best for |
-| --- | --- |
-| [Claude Desktop (stdio)](#option-a--claude-desktop-stdio) | Chatting with Claude directly — ask it to deploy, debug, scale |
-| [HTTP server](#option-b--http-server) | AI agents (LangGraph, AutoGen) calling tools over HTTP |
-
----
-
-## Option A — Claude Desktop (stdio)
-
-The fastest way to start. Claude Desktop launches the server as a subprocess and talks to it directly — no ports, no auth needed.
-
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/maripeddisupraj/devops-mcp-server.git
+git clone https://github.com/MaripeddiSupraj/devops-mcp-server.git
 cd devops-mcp-server
-
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Find your Python path
-
-```bash
-which python3   # e.g. /Users/yourname/devops-mcp-server/.venv/bin/python3
-```
-
-### 3. Edit Claude Desktop config
-
-Open (create if missing):
-
-```text
-~/Library/Application Support/Claude/claude_desktop_config.json   # macOS
-%APPDATA%\Claude\claude_desktop_config.json                        # Windows
-```
-
-Add this block — replace the paths and credentials:
-
-```json
-{
-  "mcpServers": {
-    "devops-mcp": {
-      "command": "/Users/yourname/devops-mcp-server/.venv/bin/python3",
-      "args": ["-m", "server.mcp_stdio"],
-      "cwd": "/Users/yourname/devops-mcp-server",
-      "env": {
-        "GITHUB_TOKEN": "ghp_xxxxxxxxxxxxxxxxxxxx",
-        "AWS_ACCESS_KEY_ID": "AKIAIOSFODNN7EXAMPLE",
-        "AWS_SECRET_ACCESS_KEY": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-        "AWS_REGION": "us-east-1",
-        "KUBECONFIG": "/Users/yourname/.kube/config",
-        "TERRAFORM_ALLOWED_BASE_DIR": "/tmp/terraform"
-      }
-    }
-  }
-}
-```
-
-> Only fill in credentials for the services you actually use. Missing credentials produce a warning but don't stop the server.
-
-### 4. Restart Claude Desktop
-
-Quit and reopen. You should see a tools icon (🔧) in the chat input bar — click it to confirm all 26 tools are listed.
-
-### 5. Try it
-
-Ask Claude:
-
-> *"List all pods in my kubernetes cluster"*
-> *"Create a PR from branch feature/auth to main in myorg/myapp"*
-> *"Run terraform plan on /tmp/terraform/vpc"*
-> *"List my running EC2 instances"*
-
-Claude will call the right tool automatically, show you the result, and ask before taking any destructive action.
-
----
-
-## Option B — HTTP Server
-
-For AI agents (LangGraph, AutoGen, custom) that need to call tools over HTTP.
-
-### B1. Clone and install
-
-```bash
-git clone https://github.com/maripeddisupraj/devops-mcp-server.git
-cd devops-mcp-server
-
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### B2. Configure credentials
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
+# Edit .env with your credentials (see Configuration section)
 ```
 
-Open `.env` and fill in your credentials:
-
-```env
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
-AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-AWS_REGION=us-east-1
-KUBECONFIG=/Users/yourname/.kube/config
-TERRAFORM_ALLOWED_BASE_DIR=/tmp/terraform
-MCP_API_KEY=your-secret-key          # optional — enables auth on all endpoints
-```
-
-### B3. Start the server
+### 3. Start the server
 
 ```bash
-python -m server.main
+uvicorn server.main:app --reload
+# Server runs on http://localhost:8000
 ```
 
-### B4. Verify it's running
+### 4. Discover tools
 
 ```bash
-curl http://localhost:8000/health/ready
-# {"status":"ok","version":"2.0.0","tools_registered":26,"warnings":[],"environment":"development"}
+curl http://localhost:8000/tools | python -m json.tool | head -60
 ```
 
-### B5. Call a tool
+### 5. Execute a tool
 
 ```bash
-curl -s -X POST http://localhost:8000/tools/execute \
+curl -X POST http://localhost:8000/tools/execute \
   -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_get_pods", "inputs": {"namespace": "default"}}' \
-  | python -m json.tool
-```
-
-### B6. Browse all tools
-
-```bash
-curl http://localhost:8000/tools | python -m json.tool
-# or open http://localhost:8000/docs in a browser for interactive Swagger UI
+  -d '{"tool_name": "aws_list_ec2_instances", "inputs": {"region": "us-east-1"}}'
 ```
 
 ---
 
 ## Configuration
 
-All configuration is via environment variables (or `.env` file).
+All settings are read from environment variables (or `.env` file). Only configure the services you actually use.
+
+### Core Server
 
 | Variable | Default | Description |
-| --- | --- | --- |
-| `GITHUB_TOKEN` | — | GitHub Personal Access Token (`repo` + `workflow` scopes) |
-| `AWS_ACCESS_KEY_ID` | — | AWS IAM access key |
-| `AWS_SECRET_ACCESS_KEY` | — | AWS IAM secret key |
-| `AWS_REGION` | `us-east-1` | Default AWS region |
-| `KUBECONFIG` | in-cluster | Path to kubeconfig (omit for in-cluster SA token) |
-| `TERRAFORM_BINARY` | `terraform` | Path to Terraform binary |
-| `TERRAFORM_ALLOWED_BASE_DIR` | `/tmp/terraform` | **Security**: all Terraform paths must be under this root |
-| `SERVER_HOST` | `0.0.0.0` | Server bind address |
-| `SERVER_PORT` | `8000` | Server port |
-| `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-| `DRY_RUN` | `false` | **Safety**: `true` disables all destructive operations globally |
+|---|---|---|
+| `SERVER_HOST` | `0.0.0.0` | Bind host |
+| `SERVER_PORT` | `8000` | Bind port |
+| `LOG_LEVEL` | `INFO` | Logging level |
+| `DRY_RUN` | `false` | Skip mutating operations |
+| `MCP_API_KEY` | *(none)* | API key for request auth (leave unset for dev) |
+| `ENVIRONMENT` | `development` | Runtime label |
+| `CORS_ORIGINS` | `*` | Comma-separated CORS origins |
+| `AUDIT_DB_PATH` | `audit.db` | SQLite audit log path |
+| `TOOL_TIMEOUT_SECONDS` | `120` | Default per-tool timeout |
+
+### GitHub
+
+| Variable | Description |
+|---|---|
+| `GITHUB_TOKEN` | Personal access token with repo scope |
+
+### AWS
+
+| Variable | Default | Description |
+|---|---|---|
+| `AWS_ACCESS_KEY_ID` | *(none)* | AWS access key (or use instance profile) |
+| `AWS_SECRET_ACCESS_KEY` | *(none)* | AWS secret key |
+| `AWS_REGION` | `us-east-1` | Default region |
+
+### Kubernetes
+
+| Variable | Description |
+|---|---|
+| `KUBECONFIG` | Path to kubeconfig file (defaults to `~/.kube/config`) |
+
+### Terraform
+
+| Variable | Default | Description |
+|---|---|---|
+| `TERRAFORM_BINARY` | `terraform` | Path to terraform binary |
+| `TERRAFORM_ALLOWED_BASE_DIR` | `/tmp/terraform` | Root directory for allowed Terraform paths |
+| `TERRAFORM_TIMEOUT_SECONDS` | `600` | Max seconds per Terraform command |
+
+### Helm
+
+| Variable | Default | Description |
+|---|---|---|
+| `HELM_BINARY` | `helm` | Path to helm binary |
+| `HELM_TIMEOUT_SECONDS` | `300` | Max seconds per Helm command |
+
+### Azure
+
+| Variable | Description |
+|---|---|
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
+| `AZURE_TENANT_ID` | Azure tenant ID |
+| `AZURE_CLIENT_ID` | Service principal client ID |
+| `AZURE_CLIENT_SECRET` | Service principal client secret |
+
+### GCP
+
+| Variable | Description |
+|---|---|
+| `GCP_PROJECT_ID` | GCP project ID |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON key file |
+
+### ArgoCD
+
+| Variable | Default | Description |
+|---|---|---|
+| `ARGOCD_SERVER_URL` | *(none)* | ArgoCD server URL (e.g. `https://argocd.example.com`) |
+| `ARGOCD_AUTH_TOKEN` | *(none)* | ArgoCD API token |
+| `ARGOCD_INSECURE` | `false` | Skip TLS verification |
+
+### HashiCorp Vault
+
+| Variable | Default | Description |
+|---|---|---|
+| `VAULT_ADDR` | *(none)* | Vault server address (e.g. `https://vault.example.com`) |
+| `VAULT_TOKEN` | *(none)* | Vault token |
+| `VAULT_NAMESPACE` | *(none)* | Vault namespace (Enterprise only) |
+| `VAULT_MOUNT` | `secret` | KV v2 mount path |
+
+### PagerDuty
+
+| Variable | Description |
+|---|---|
+| `PAGERDUTY_API_KEY` | PagerDuty REST API v2 key |
+| `PAGERDUTY_EMAIL` | Email address for incident creation (From header) |
+| `PAGERDUTY_SERVICE_ID` | Default service ID for new incidents |
+
+### Slack (optional)
+
+| Variable | Description |
+|---|---|
+| `SLACK_WEBHOOK_URL` | Incoming webhook URL for tool notifications |
 
 ---
 
 ## Running the Server
 
-### Development
-
-```bash
-python -m server.main
-```
-
-### Production (single worker)
+### HTTP mode (API / agent usage)
 
 ```bash
 uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
-> **Multi-worker limitation:** the job store is in-memory and the audit log uses SQLite. Running `--workers N` (multiple processes) means each worker has its own isolated job store — a job submitted to worker A is invisible to worker B. For horizontal scaling, run multiple single-worker containers behind a load balancer with sticky sessions, or replace the job store and audit log with a shared backend (Redis + PostgreSQL).
+### stdio mode (Claude Desktop)
 
-### Interactive API docs
+```bash
+python -m server.mcp_stdio
+# or after pip install:
+devops-mcp-server
+```
 
-| URL | Description |
-| --- | --- |
-| `http://localhost:8000/docs` | Swagger UI — try tools interactively |
-| `http://localhost:8000/redoc` | ReDoc — clean reference docs |
+### Available endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/tools` | List all registered tools |
+| `GET` | `/tools?tag=aws` | Filter tools by tag |
+| `GET` | `/tools/{name}` | Describe a single tool |
+| `POST` | `/tools/execute` | Execute a tool |
+| `GET` | `/health` | Health check |
+| `GET` | `/metrics` | Prometheus metrics |
+
+---
+
+## Claude Desktop Integration
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "devops": {
+      "command": "devops-mcp-server",
+      "env": {
+        "GITHUB_TOKEN": "ghp_...",
+        "AWS_ACCESS_KEY_ID": "AKIA...",
+        "AWS_SECRET_ACCESS_KEY": "...",
+        "AWS_REGION": "us-east-1",
+        "KUBECONFIG": "/home/user/.kube/config",
+        "AZURE_SUBSCRIPTION_ID": "...",
+        "AZURE_TENANT_ID": "...",
+        "AZURE_CLIENT_ID": "...",
+        "AZURE_CLIENT_SECRET": "...",
+        "GCP_PROJECT_ID": "my-project",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/home/user/gcp-key.json",
+        "ARGOCD_SERVER_URL": "https://argocd.example.com",
+        "ARGOCD_AUTH_TOKEN": "...",
+        "VAULT_ADDR": "https://vault.example.com",
+        "VAULT_TOKEN": "...",
+        "PAGERDUTY_API_KEY": "..."
+      }
+    }
+  }
+}
+```
 
 ---
 
 ## Docker
 
-### Build
-
 ```bash
-docker build -t devops-mcp-server:latest .
+# Build
+docker build -t devops-mcp-server .
+
+# Run with env file
+docker run --env-file .env -p 8000:8000 devops-mcp-server
+
+# Or with docker-compose
+docker-compose up
 ```
-
-### Run
-
-```bash
-docker run -d \
-  --name devops-mcp \
-  -p 8000:8000 \
-  -e GITHUB_TOKEN=ghp_xxx \
-  -e AWS_ACCESS_KEY_ID=AKIA... \
-  -e AWS_SECRET_ACCESS_KEY=... \
-  -e AWS_REGION=us-east-1 \
-  -e KUBECONFIG=/kubeconfig \
-  -v ~/.kube/config:/kubeconfig:ro \
-  -e DRY_RUN=false \
-  devops-mcp-server:latest
-```
-
-### Health check
-
-```bash
-docker inspect --format='{{json .State.Health}}' devops-mcp
-```
-
----
-
-## API Reference
-
-### `GET /health`
-
-Liveness probe.
-
-```bash
-curl http://localhost:8000/health
-```
-
-```json
-{
-  "status": "ok",
-  "version": "2.0.0",
-  "tools_registered": 26
-}
-```
-
----
-
-### `GET /tools`
-
-List all registered tools with their schemas.
-
-```bash
-curl http://localhost:8000/tools
-```
-
-```json
-{
-  "count": 26,
-  "tools": [
-    {
-      "name": "terraform_plan",
-      "description": "Runs terraform plan in the specified directory...",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "path": { "type": "string" },
-          "dry_run": { "type": "boolean", "default": false }
-        },
-        "required": ["path"]
-      }
-    },
-    ...
-  ]
-}
-```
-
----
-
-### `GET /tools/{tool_name}`
-
-Describe a single tool.
-
-```bash
-curl http://localhost:8000/tools/k8s_get_logs
-```
-
-```json
-{
-  "name": "k8s_get_logs",
-  "description": "Fetches logs from a Kubernetes pod container...",
-  "input_schema": { ... }
-}
-```
-
----
-
-### `POST /tools/execute`
-
-Execute any tool. This is the primary endpoint used by AI agents.
-
-**Request:**
-
-```json
-{
-  "tool_name": "<registered_tool_name>",
-  "inputs": {
-    "<param>": "<value>"
-  }
-}
-```
-
-**Response (always the same envelope):**
-
-```json
-{
-  "status": "success",
-  "data": { ... },
-  "error": null
-}
-```
-
-or on error:
-
-```json
-{
-  "status": "error",
-  "data": null,
-  "error": "Human-readable description of what went wrong"
-}
-```
-
-> The HTTP status code is always `200`. Check `response.status` in the body to determine success or failure.
 
 ---
 
@@ -492,1090 +388,501 @@ or on error:
 
 ### Terraform Tools
 
-#### `terraform_plan`
+| Tool | Description |
+|---|---|
+| `terraform_plan` | Run `terraform plan` in a directory; returns the plan output |
+| `terraform_apply` | Run `terraform apply -auto-approve`; returns apply output |
+| `terraform_destroy` | Run `terraform destroy -auto-approve`; destructive |
+| `terraform_init` | Run `terraform init` to initialize providers and modules |
+| `terraform_validate` | Run `terraform validate` to check configuration syntax |
+| `terraform_output` | Run `terraform output -json` to retrieve output values |
+| `terraform_state_list` | Run `terraform state list` to enumerate managed resources |
 
-Runs `terraform plan` and returns stdout, stderr, exit code, and a `has_changes` boolean.
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `path` | string | Yes | — | Absolute path to Terraform working directory |
-| `dry_run` | boolean | No | `false` | Run `terraform validate` instead of a real plan |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "terraform_plan",
-    "inputs": {
-      "path": "/tmp/terraform/my-infra"
-    }
-  }' | python -m json.tool
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "stdout": "Plan: 3 to add, 1 to change, 0 to destroy.",
-    "stderr": "",
-    "exit_code": 2,
-    "has_changes": true,
-    "dry_run": false
-  }
-}
-```
-
-> `exit_code` meanings: `0` = no changes, `2` = changes present, other = error.
-
----
-
-#### `terraform_apply`
-
-Applies the Terraform configuration. **Blocked when `DRY_RUN=true`.**
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `path` | string | Yes | — | Terraform working directory |
-| `auto_approve` | boolean | No | `false` | Skip interactive approval prompt |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "terraform_apply",
-    "inputs": {
-      "path": "/tmp/terraform/my-infra",
-      "auto_approve": true
-    }
-  }'
-```
-
----
-
-#### `terraform_destroy`
-
-Destroys all resources. **Requires explicit confirmation string.**
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `path` | string | Yes | — | Terraform working directory |
-| `confirm_destroy` | string | Yes | — | Must be exactly `"DESTROY"` |
-| `auto_approve` | boolean | No | `false` | Skip interactive prompt |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "terraform_destroy",
-    "inputs": {
-      "path": "/tmp/terraform/my-infra",
-      "confirm_destroy": "DESTROY",
-      "auto_approve": true
-    }
-  }'
-```
+**Required env:** `TERRAFORM_BINARY` (defaults to `terraform` on PATH)
 
 ---
 
 ### GitHub Tools
 
-#### `github_create_pull_request`
+| Tool | Description |
+|---|---|
+| `github_create_pr` | Create a pull request in a repository |
+| `github_get_repo` | Get metadata for a repository |
+| `github_list_issues` | List open issues, optionally filtered by label |
+| `github_trigger_workflow` | Trigger a workflow dispatch event |
+| `github_create_release` | Create a tagged release with release notes |
+| `github_create_issue` | Create a new issue with title, body, and labels |
+| `github_merge_pr` | Merge an open pull request by number |
+| `github_get_workflow_run` | Get the status and conclusion of a workflow run |
 
-Opens a pull request. Requires `GITHUB_TOKEN` with `repo` scope.
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `repo` | string | Yes | — | `owner/repo` format |
-| `title` | string | Yes | — | PR title |
-| `body` | string | Yes | — | PR description (Markdown) |
-| `head` | string | Yes | — | Source branch to merge from |
-| `base` | string | No | `main` | Target branch to merge into |
-| `draft` | boolean | No | `false` | Create as draft PR |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "github_create_pull_request",
-    "inputs": {
-      "repo": "myorg/myapp",
-      "title": "feat: add Redis caching layer",
-      "body": "## Summary\n- Added Redis client\n- Implemented cache-aside pattern\n\n## Test Plan\n- [x] Unit tests\n- [x] Integration tests",
-      "head": "feature/redis-cache",
-      "base": "main"
-    }
-  }'
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "number": 47,
-    "url": "https://github.com/myorg/myapp/pull/47",
-    "state": "open",
-    "title": "feat: add Redis caching layer",
-    "head": "feature/redis-cache",
-    "base": "main"
-  }
-}
-```
-
----
-
-#### `github_get_repo`
-
-Fetches repository metadata.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `repo` | string | Yes | `owner/repo` format |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "github_get_repo", "inputs": {"repo": "kubernetes/kubernetes"}}'
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "name": "kubernetes",
-    "full_name": "kubernetes/kubernetes",
-    "description": "Production-Grade Container Scheduling and Management",
-    "url": "https://github.com/kubernetes/kubernetes",
-    "default_branch": "master",
-    "stars": 108000,
-    "forks": 38500,
-    "open_issues": 2400,
-    "private": false,
-    "language": "Go"
-  }
-}
-```
-
----
-
-#### `github_list_issues`
-
-Lists issues in a repository. Pull requests are excluded automatically.
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `repo` | string | Yes | — | `owner/repo` format |
-| `state` | string | No | `open` | `open`, `closed`, or `all` |
-| `label` | string | No | — | Filter by label name |
-| `limit` | integer | No | `30` | Max results (1–100) |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "github_list_issues", "inputs": {"repo": "myorg/myapp", "state": "open", "label": "bug"}}'
-```
-
----
-
-#### `github_trigger_workflow`
-
-Triggers a GitHub Actions workflow via `workflow_dispatch`. Requires a token with `workflow` scope.
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `repo` | string | Yes | — | `owner/repo` format |
-| `workflow_id` | string | Yes | — | Filename (e.g. `ci.yml`) or numeric ID |
-| `ref` | string | No | `main` | Branch or tag to run on |
-| `inputs` | object | No | — | `workflow_dispatch` input parameters |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "github_trigger_workflow",
-    "inputs": {
-      "repo": "myorg/myapp",
-      "workflow_id": "deploy.yml",
-      "ref": "main",
-      "inputs": {"environment": "production"}
-    }
-  }'
-```
-
----
-
-#### `github_create_release`
-
-Creates a GitHub release with a tag, title, and release notes.
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `repo` | string | Yes | — | `owner/repo` format |
-| `tag_name` | string | Yes | — | Tag to create (e.g. `v1.2.3`) |
-| `name` | string | Yes | — | Release title |
-| `body` | string | No | `""` | Release notes (Markdown) |
-| `draft` | boolean | No | `false` | Publish as draft |
-| `prerelease` | boolean | No | `false` | Mark as pre-release |
-| `target_commitish` | string | No | `main` | Branch or SHA for the tag |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "github_create_release",
-    "inputs": {
-      "repo": "myorg/myapp",
-      "tag_name": "v2.4.1",
-      "name": "v2.4.1 — Redis caching",
-      "body": "## What'\''s new\n- Redis cache-aside pattern\n- 40% latency reduction"
-    }
-  }'
-```
+**Required env:** `GITHUB_TOKEN`
 
 ---
 
 ### AWS Tools
 
-#### `aws_create_ec2_instance`
+#### EC2
 
-Launches an EC2 instance. Instance type must be in the allowed list.
+| Tool | Description |
+|---|---|
+| `aws_describe_ec2_instance` | Describe a specific EC2 instance by ID |
+| `aws_list_ec2_instances` | List EC2 instances, optionally filtered by state |
+| `aws_stop_ec2_instance` | Stop a running EC2 instance |
+| `aws_start_ec2_instance` | Start a stopped EC2 instance |
+| `aws_terminate_ec2_instance` | Terminate an EC2 instance (destructive) |
 
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `name` | string | Yes | — | Value for the `Name` tag |
-| `instance_type` | string | Yes | — | Must be in allowlist (see below) |
-| `ami_id` | string | Yes | — | Amazon Machine Image ID |
-| `key_name` | string | No | — | EC2 Key Pair for SSH access |
-| `subnet_id` | string | No | — | VPC Subnet ID |
-| `security_group_ids` | array | No | — | List of Security Group IDs |
-| `dry_run` | boolean | No | `false` | Validate permissions only |
+#### S3
 
-**Allowed instance types:** `t2.micro`, `t2.small`, `t2.medium`, `t3.micro`, `t3.small`, `t3.medium`, `t3.large`, `t3a.micro`, `t3a.small`, `t3a.medium`, `m5.large`, `m5.xlarge`, `c5.large`, `c5.xlarge`
+| Tool | Description |
+|---|---|
+| `aws_list_s3_buckets` | List all S3 buckets in the account |
+| `aws_create_s3_bucket` | Create a new S3 bucket |
+| `aws_list_s3_objects` | List objects in a bucket with optional prefix filter |
+| `aws_upload_s3_object` | Upload text content to an S3 object |
 
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "aws_create_ec2_instance",
-    "inputs": {
-      "name": "web-server-prod-01",
-      "instance_type": "t3.medium",
-      "ami_id": "ami-0c55b159cbfafe1f0",
-      "key_name": "my-keypair",
-      "security_group_ids": ["sg-0abc123def456789"]
-    }
-  }'
-```
+#### Lambda
 
-```json
-{
-  "status": "success",
-  "data": {
-    "instance_id": "i-0abc123def456789a",
-    "state": "pending",
-    "instance_type": "t3.medium",
-    "ami": "ami-0c55b159cbfafe1f0",
-    "availability_zone": "us-east-1a"
-  }
-}
-```
+| Tool | Description |
+|---|---|
+| `aws_list_lambda_functions` | List Lambda functions, optionally filtered by runtime |
+| `aws_invoke_lambda` | Invoke a Lambda function synchronously |
 
----
+#### RDS
 
-#### `aws_list_ec2_instances`
+| Tool | Description |
+|---|---|
+| `aws_list_rds_instances` | List RDS DB instances |
+| `aws_rds_create_instance` | Create a new RDS DB instance |
+| `aws_rds_create_snapshot` | Create a snapshot of an RDS instance |
+| `aws_rds_restore_from_snapshot` | Restore an RDS instance from a snapshot |
 
-Lists EC2 instances with optional state filter.
+#### CloudWatch
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `state` | string | No | Filter: `running`, `stopped`, `pending`, etc. |
+| Tool | Description |
+|---|---|
+| `aws_cloudwatch_get_metrics` | Retrieve CloudWatch metric statistics |
+| `aws_cloudwatch_list_alarms` | List CloudWatch alarms with optional state filter |
+| `aws_cloudwatch_list_log_groups` | List CloudWatch Log Groups |
+| `aws_cloudwatch_query_logs` | Run a CloudWatch Logs Insights query |
 
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "aws_list_ec2_instances", "inputs": {"state": "running"}}'
-```
+#### Secrets Manager & SSM
 
----
+| Tool | Description |
+|---|---|
+| `aws_secrets_get` | Retrieve a secret value from Secrets Manager |
+| `aws_secrets_create` | Create a new secret in Secrets Manager |
+| `aws_ssm_get_parameter` | Get a parameter from SSM Parameter Store |
+| `aws_ssm_put_parameter` | Put/update a parameter in SSM Parameter Store |
 
-#### `aws_create_s3_bucket`
+#### Networking
 
-Creates an S3 bucket with all public access blocked by default.
+| Tool | Description |
+|---|---|
+| `aws_list_vpcs` | List VPCs in the region |
+| `aws_list_security_groups` | List EC2 security groups |
+| `aws_list_route53_zones` | List Route 53 hosted zones |
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `bucket_name` | string | Yes | Globally unique, 3-63 lowercase chars |
-| `region` | string | No | AWS region (defaults to `AWS_REGION`) |
+#### IAM
 
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "aws_create_s3_bucket",
-    "inputs": {
-      "bucket_name": "myapp-artifacts-prod-2024",
-      "region": "us-west-2"
-    }
-  }'
-```
+| Tool | Description |
+|---|---|
+| `aws_iam_list_roles` | List IAM roles with optional path prefix filter |
+| `aws_iam_list_policies` | List IAM customer-managed policies |
+| `aws_iam_simulate_policy` | Simulate IAM policy evaluation for an action/resource |
 
-```json
-{
-  "status": "success",
-  "data": {
-    "bucket": "myapp-artifacts-prod-2024",
-    "region": "us-west-2",
-    "public_access": "blocked"
-  }
-}
-```
+#### ECS
 
----
+| Tool | Description |
+|---|---|
+| `aws_ecs_list_clusters` | List ECS clusters |
+| `aws_ecs_list_services` | List services in an ECS cluster |
+| `aws_ecs_list_tasks` | List running tasks in an ECS cluster |
+| `aws_ecs_deploy_service` | Force a new deployment of an ECS service |
 
-#### `aws_list_s3_buckets`
+#### ECR
 
-Lists all S3 buckets in the account. No inputs required.
+| Tool | Description |
+|---|---|
+| `aws_ecr_list_repositories` | List ECR repositories |
+| `aws_ecr_list_images` | List images in an ECR repository |
 
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "aws_list_s3_buckets", "inputs": {}}'
-```
+#### ALB / Load Balancing
 
----
+| Tool | Description |
+|---|---|
+| `aws_alb_list` | List Application/Network Load Balancers |
+| `aws_alb_list_target_groups` | List ALB target groups |
 
-#### `aws_list_lambda_functions`
+#### Cost Explorer
 
-Lists all Lambda functions in the configured region.
+| Tool | Description |
+|---|---|
+| `aws_cost_by_service` | Get AWS cost breakdown by service for a date range |
+| `aws_cost_monthly_total` | Get total monthly AWS spend |
 
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `max_items` | integer | No | `50` | Max results (1–100) |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "aws_list_lambda_functions", "inputs": {"max_items": 20}}'
-```
-
----
-
-#### `aws_invoke_lambda`
-
-Invokes a Lambda function synchronously or asynchronously. Returns the response payload and last 4 KB of execution logs.
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `function_name` | string | Yes | — | Function name or full ARN |
-| `payload` | object | No | — | JSON event payload |
-| `invocation_type` | string | No | `RequestResponse` | `RequestResponse` (sync), `Event` (async), or `DryRun` |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "aws_invoke_lambda",
-    "inputs": {
-      "function_name": "my-processor",
-      "payload": {"key": "value"},
-      "invocation_type": "RequestResponse"
-    }
-  }'
-```
-
-> Long-running invocations should use `POST /tools/execute/async` — Lambda max timeout is 15 min; this endpoint caps at 5 min.
-
----
-
-#### `aws_list_rds_instances`
-
-Lists RDS database instances with engine, status, endpoint, and Multi-AZ info.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `db_instance_identifier` | string | No | Filter to a specific instance by identifier |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "aws_list_rds_instances", "inputs": {}}'
-```
+**Required env:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
 
 ---
 
 ### Kubernetes Tools
 
-> All Kubernetes tools default to the `default` namespace. Pass `"namespace": "production"` (or any namespace) to override.
+#### Workloads
+
+| Tool | Description |
+|---|---|
+| `kubernetes_deploy` | Deploy or update a deployment with a new image |
+| `kubernetes_get_pods` | List pods in a namespace |
+| `kubernetes_get_logs` | Get logs from a pod container |
+| `kubernetes_get_events` | Get events for a namespace |
+| `kubernetes_scale` | Scale a deployment to N replicas |
+| `kubernetes_rollout_restart` | Trigger a rolling restart of a deployment |
+| `kubernetes_rollout_status` | Check the rollout status of a deployment |
+| `kubernetes_get_deployments` | List deployments in a namespace |
+| `kubernetes_delete_pod` | Delete a pod (triggers restart) |
+
+#### Services & Networking
+
+| Tool | Description |
+|---|---|
+| `kubernetes_get_services` | List services in a namespace |
+| `kubernetes_list_ingresses` | List Ingress resources in a namespace |
+
+#### Cluster
+
+| Tool | Description |
+|---|---|
+| `kubernetes_get_nodes` | List cluster nodes with status and capacity |
+| `kubernetes_list_namespaces` | List all namespaces |
+| `kubernetes_create_namespace` | Create a new namespace |
+
+#### Config & Secrets
+
+| Tool | Description |
+|---|---|
+| `kubernetes_get_configmap` | Get a ConfigMap and its data |
+| `kubernetes_apply_configmap` | Create or update a ConfigMap |
+| `kubernetes_list_secrets` | List secret names in a namespace (keys only, not values) |
+
+#### Batch
+
+| Tool | Description |
+|---|---|
+| `kubernetes_list_jobs` | List Jobs in a namespace |
+| `kubernetes_list_cronjobs` | List CronJobs in a namespace |
+
+**Required env:** `KUBECONFIG`
 
 ---
 
-#### `k8s_get_pods`
+### Helm Tools
 
-Lists all pods in a namespace with readiness, restart count, node, and IP.
+| Tool | Description |
+|---|---|
+| `helm_list` | List Helm releases in a namespace |
+| `helm_install` | Install a Helm chart as a named release |
+| `helm_upgrade` | Upgrade an existing Helm release |
+| `helm_rollback` | Roll back a release to a previous revision |
+| `helm_status` | Get the status of a Helm release |
 
-| Parameter | Type | Required | Default |
-| --- | --- | --- | --- |
-| `namespace` | string | No | `default` |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_get_pods", "inputs": {"namespace": "production"}}'
-```
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "name": "api-server-7d9f6b8c4-xk2pn",
-      "namespace": "production",
-      "status": "Running",
-      "ready": true,
-      "restarts": 0,
-      "node": "ip-10-0-1-42.ec2.internal",
-      "ip": "10.244.3.15"
-    },
-    {
-      "name": "worker-6c8b5d7f9-mq4rs",
-      "namespace": "production",
-      "status": "CrashLoopBackOff",
-      "ready": false,
-      "restarts": 7,
-      "node": "ip-10-0-1-43.ec2.internal",
-      "ip": "10.244.3.21"
-    }
-  ]
-}
-```
+**Required env:** `HELM_BINARY` (defaults to `helm` on PATH), `KUBECONFIG`
 
 ---
 
-#### `k8s_get_logs`
+### Azure Tools
 
-Fetches pod logs. The most-used debugging tool in Kubernetes.
+| Tool | Description |
+|---|---|
+| `azure_list_resource_groups` | List all resource groups in the subscription |
+| `azure_list_vms` | List VMs in a resource group |
+| `azure_start_vm` | Start an Azure virtual machine |
+| `azure_stop_vm` | Deallocate (stop) an Azure virtual machine |
+| `azure_list_aks_clusters` | List AKS clusters in a resource group |
+| `azure_list_acr_registries` | List Azure Container Registries in a resource group |
+| `azure_keyvault_get_secret` | Get a secret from Azure Key Vault |
+| `azure_keyvault_set_secret` | Set a secret in Azure Key Vault |
 
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `pod_name` | string | Yes | — | Exact pod name |
-| `namespace` | string | No | `default` | |
-| `container` | string | No | auto | Container name (for multi-container pods) |
-| `tail_lines` | integer | No | `100` | Lines to return (max 5000) |
-| `previous` | boolean | No | `false` | Get logs from crashed previous instance |
-
-```bash
-# Get last 200 lines from a pod
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "k8s_get_logs",
-    "inputs": {
-      "pod_name": "worker-6c8b5d7f9-mq4rs",
-      "namespace": "production",
-      "tail_lines": 200
-    }
-  }'
-```
-
-```bash
-# Get logs from a crashed container (previous instance)
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "k8s_get_logs",
-    "inputs": {
-      "pod_name": "worker-6c8b5d7f9-mq4rs",
-      "namespace": "production",
-      "previous": true,
-      "tail_lines": 50
-    }
-  }'
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "pod": "worker-6c8b5d7f9-mq4rs",
-    "namespace": "production",
-    "container": "auto",
-    "tail_lines": 50,
-    "previous": true,
-    "lines": 50,
-    "log": "2024-04-12T10:23:41Z ERROR failed to connect to database: connection refused\n2024-04-12T10:23:41Z FATAL exiting..."
-  }
-}
-```
+**Required env:** `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
 
 ---
 
-#### `k8s_get_events`
+### GCP Tools
 
-Lists namespace events, **warnings first**. Use this when pods are not starting — it will show OOMKill, ImagePullBackOff, probe failures, and scheduling issues.
+| Tool | Description |
+|---|---|
+| `gcp_list_compute_instances` | List Compute Engine instances in a zone |
+| `gcp_list_storage_buckets` | List Cloud Storage buckets in the project |
+| `gcp_list_gke_clusters` | List GKE clusters in a region |
+| `gcp_list_cloud_run_services` | List Cloud Run services in a region |
+| `gcp_list_cloud_sql_instances` | List Cloud SQL instances in the project |
+| `gcp_list_cloud_builds` | List recent Cloud Build builds |
+| `gcp_trigger_cloud_build` | Trigger a Cloud Build via a trigger ID |
 
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `namespace` | string | No | `default` | |
-| `field_selector` | string | No | — | e.g. `"involvedObject.name=my-pod"` or `"type=Warning"` |
-
-```bash
-# All events in production namespace (warnings first)
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_get_events", "inputs": {"namespace": "production"}}'
-```
-
-```bash
-# Events for a specific pod only
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "k8s_get_events",
-    "inputs": {
-      "namespace": "production",
-      "field_selector": "involvedObject.name=worker-6c8b5d7f9-mq4rs"
-    }
-  }'
-```
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "type": "Warning",
-      "reason": "OOMKilled",
-      "message": "Container worker was OOM killed",
-      "object": "Pod/worker-6c8b5d7f9-mq4rs",
-      "count": 7,
-      "first_time": "2024-04-12 09:10:00+00:00",
-      "last_time": "2024-04-12 10:23:41+00:00"
-    }
-  ]
-}
-```
+**Required env:** `GCP_PROJECT_ID`, `GOOGLE_APPLICATION_CREDENTIALS`
 
 ---
 
-#### `k8s_deploy`
+### ArgoCD Tools
 
-Creates or updates a Kubernetes Deployment. If one exists with the same name, it is patched (rolling update).
+| Tool | Description |
+|---|---|
+| `argocd_list_apps` | List all ArgoCD applications with sync status |
+| `argocd_get_app` | Get detailed status for a single application |
+| `argocd_sync_app` | Trigger a sync for an ArgoCD application |
+| `argocd_rollback_app` | Roll back an application to a previous revision |
 
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `name` | string | Yes | — | Deployment name |
-| `image` | string | Yes | — | Container image with tag |
-| `namespace` | string | No | `default` | |
-| `replicas` | integer | No | `1` | Pod replica count (1–50) |
-| `port` | integer | No | `80` | Container port |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "k8s_deploy",
-    "inputs": {
-      "name": "api-server",
-      "image": "myregistry/api-server:v2.4.1",
-      "namespace": "production",
-      "replicas": 3,
-      "port": 8080
-    }
-  }'
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "name": "api-server",
-    "namespace": "production",
-    "replicas": 3,
-    "image": "myregistry/api-server:v2.4.1",
-    "action": "updated"
-  }
-}
-```
+**Required env:** `ARGOCD_SERVER_URL`, `ARGOCD_AUTH_TOKEN`
 
 ---
 
-#### `k8s_get_deployments`
+### HashiCorp Vault Tools
 
-Lists all deployments in a namespace with replica health and current image.
+| Tool | Description |
+|---|---|
+| `vault_read_secret` | Read a secret from the KV v2 store |
+| `vault_write_secret` | Write key-value data to the KV v2 store |
+| `vault_list_secrets` | List secret keys at a path in the KV v2 store |
 
-| Parameter | Type | Required | Default |
-| --- | --- | --- | --- |
-| `namespace` | string | No | `default` |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_get_deployments", "inputs": {"namespace": "production"}}'
-```
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "name": "api-server",
-      "namespace": "production",
-      "replicas": 3,
-      "available": 3,
-      "ready": 3,
-      "image": "myregistry/api-server:v2.4.1",
-      "conditions": [
-        { "type": "Available", "status": "True", "reason": "MinimumReplicasAvailable" }
-      ]
-    }
-  ]
-}
-```
+**Required env:** `VAULT_ADDR`, `VAULT_TOKEN`
 
 ---
 
-#### `k8s_scale`
+### PagerDuty Tools
 
-Changes the replica count of a Deployment. Supports scale-to-zero.
+| Tool | Description |
+|---|---|
+| `pagerduty_list_incidents` | List incidents, optionally filtered by status |
+| `pagerduty_acknowledge_incident` | Acknowledge an incident by ID |
+| `pagerduty_resolve_incident` | Resolve an incident by ID |
+| `pagerduty_create_incident` | Create a new incident for a service |
 
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `name` | string | Yes | — | Deployment name |
-| `replicas` | integer | Yes | — | Desired replicas (0–100) |
-| `namespace` | string | No | `default` | |
-
-```bash
-# Scale up for peak traffic
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_scale", "inputs": {"name": "api-server", "replicas": 10, "namespace": "production"}}'
-
-# Scale to zero for cost saving (e.g. staging at night)
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_scale", "inputs": {"name": "api-server", "replicas": 0, "namespace": "staging"}}'
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "name": "api-server",
-    "namespace": "production",
-    "previous_replicas": 3,
-    "new_replicas": 10
-  }
-}
-```
+**Required env:** `PAGERDUTY_API_KEY`, `PAGERDUTY_EMAIL` (for create)
 
 ---
 
-#### `k8s_rollout_restart`
+## Tool Summary
 
-Triggers a rolling restart with zero downtime. Equivalent to `kubectl rollout restart`. Use this after updating a ConfigMap, Secret, or environment variable.
-
-| Parameter | Type | Required | Default |
-| --- | --- | --- | --- |
-| `name` | string | Yes | — |
-| `namespace` | string | No | `default` |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_rollout_restart", "inputs": {"name": "api-server", "namespace": "production"}}'
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "name": "api-server",
-    "namespace": "production",
-    "action": "rollout_restart",
-    "triggered_at": "2024-04-12T10:30:00Z",
-    "message": "Rolling restart triggered for deployment 'api-server'."
-  }
-}
-```
-
----
-
-#### `k8s_rollout_status`
-
-Checks if a rollout completed. An AI agent should call this after `k8s_deploy` or `k8s_rollout_restart` to verify success before marking a task complete.
-
-| Parameter | Type | Required | Default |
-| --- | --- | --- | --- |
-| `name` | string | Yes | — |
-| `namespace` | string | No | `default` |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_rollout_status", "inputs": {"name": "api-server", "namespace": "production"}}'
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "name": "api-server",
-    "namespace": "production",
-    "desired": 3,
-    "updated": 3,
-    "ready": 3,
-    "available": 3,
-    "complete": true,
-    "conditions": [
-      { "type": "Available", "status": "True", "message": "Deployment has minimum availability." },
-      { "type": "Progressing", "status": "True", "message": "ReplicaSet has successfully progressed." }
-    ]
-  }
-}
-```
-
----
-
-#### `k8s_get_services`
-
-Lists all services in a namespace with their type, ports, and external IPs.
-
-| Parameter | Type | Required | Default |
-| --- | --- | --- | --- |
-| `namespace` | string | No | `default` |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_get_services", "inputs": {"namespace": "production"}}'
-```
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "name": "api-server",
-      "namespace": "production",
-      "type": "LoadBalancer",
-      "cluster_ip": "10.100.0.15",
-      "external_ip": "54.210.23.45",
-      "ports": [
-        { "port": 80, "target_port": "8080", "protocol": "TCP", "node_port": 32100 }
-      ],
-      "selector": { "app": "api-server" }
-    }
-  ]
-}
-```
-
----
-
-#### `k8s_get_nodes`
-
-Returns health and capacity information for every node in the cluster.
-
-No inputs required.
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "k8s_get_nodes", "inputs": {}}'
-```
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "name": "ip-10-0-1-42.ec2.internal",
-      "ready": true,
-      "roles": ["worker"],
-      "k8s_version": "v1.29.2",
-      "os": "Amazon Linux 2",
-      "container_runtime": "containerd://1.7.2",
-      "cpu": "4",
-      "memory": "8192000Ki",
-      "conditions": [
-        { "type": "Ready", "status": "True" },
-        { "type": "MemoryPressure", "status": "False" },
-        { "type": "DiskPressure", "status": "False" }
-      ]
-    }
-  ]
-}
-```
-
----
-
-#### `k8s_delete_pod`
-
-Deletes a specific pod. Kubernetes immediately recreates it if it belongs to a Deployment or ReplicaSet. Use this for a targeted single-pod restart instead of a full rolling restart.
-
-| Parameter | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `pod_name` | string | Yes | — | Exact pod name |
-| `namespace` | string | No | `default` | |
-| `grace_period_seconds` | integer | No | `30` | `0` for immediate kill |
-
-```bash
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "k8s_delete_pod",
-    "inputs": {
-      "pod_name": "worker-6c8b5d7f9-mq4rs",
-      "namespace": "production",
-      "grace_period_seconds": 0
-    }
-  }'
-```
-
-```json
-{
-  "status": "success",
-  "data": {
-    "pod": "worker-6c8b5d7f9-mq4rs",
-    "namespace": "production",
-    "action": "deleted",
-    "grace_period_seconds": 0,
-    "message": "Pod 'worker-6c8b5d7f9-mq4rs' deleted. Kubernetes will reschedule it if managed by a controller."
-  }
-}
-```
+| Service | Tools | Tags |
+|---|---|---|
+| Terraform | 7 | `terraform`, `iac` |
+| GitHub | 8 | `github`, `scm`, `ci` |
+| AWS EC2 | 5 | `aws`, `ec2`, `compute` |
+| AWS S3 | 4 | `aws`, `s3`, `storage` |
+| AWS Lambda | 2 | `aws`, `lambda`, `serverless` |
+| AWS RDS | 4 | `aws`, `rds`, `database` |
+| AWS CloudWatch | 4 | `aws`, `cloudwatch`, `observability` |
+| AWS Secrets/SSM | 4 | `aws`, `secrets`, `ssm` |
+| AWS Networking | 3 | `aws`, `networking`, `vpc` |
+| AWS IAM | 3 | `aws`, `iam`, `security` |
+| AWS ECS | 4 | `aws`, `ecs`, `compute` |
+| AWS ECR | 2 | `aws`, `ecr`, `containers` |
+| AWS ALB | 2 | `aws`, `networking`, `alb` |
+| AWS Cost Explorer | 2 | `aws`, `cost`, `finops` |
+| Kubernetes | 19 | `kubernetes`, `k8s` |
+| Helm | 5 | `helm`, `kubernetes` |
+| Azure | 8 | `azure`, `multicloud` |
+| GCP | 7 | `gcp`, `multicloud` |
+| ArgoCD | 4 | `argocd`, `gitops` |
+| HashiCorp Vault | 3 | `vault`, `secrets` |
+| PagerDuty | 4 | `pagerduty`, `incident` |
+| **Total** | **103** | |
 
 ---
 
 ## Example Workflows
 
-### Workflow 1: Deploy and Verify
-
-An AI agent deploying a new version and confirming success:
+### Incident response workflow
 
 ```python
-import requests
+# 1. Detect incident
+incidents = execute_tool("pagerduty_list_incidents", {"status": "triggered"})
 
-BASE = "http://localhost:8000"
+# 2. Acknowledge it
+execute_tool("pagerduty_acknowledge_incident", {"incident_id": "P1234AB"})
 
-def call(tool, inputs):
-    r = requests.post(f"{BASE}/tools/execute", json={"tool_name": tool, "inputs": inputs})
-    return r.json()
+# 3. Check CloudWatch alarms
+execute_tool("aws_cloudwatch_list_alarms", {"state_value": "ALARM"})
 
-# 1. Deploy new version
-result = call("k8s_deploy", {
-    "name": "api-server",
-    "image": "myregistry/api-server:v2.4.1",
-    "namespace": "production",
-    "replicas": 3
+# 4. Pull recent logs
+execute_tool("aws_cloudwatch_query_logs", {
+    "log_group": "/aws/lambda/api",
+    "query": "fields @timestamp, @message | filter @message like /ERROR/ | limit 20",
+    "minutes": 30
 })
 
-# 2. Poll rollout status
-import time
-for _ in range(12):   # up to 2 minutes
-    status = call("k8s_rollout_status", {"name": "api-server", "namespace": "production"})
-    if status["data"]["complete"]:
-        print("Rollout complete!")
-        break
-    time.sleep(10)
-else:
-    # 3. Something wrong — check events
-    events = call("k8s_get_events", {
-        "namespace": "production",
-        "field_selector": "involvedObject.name=api-server"
-    })
-    print("Events:", events["data"])
+# 5. Restart the affected pod
+execute_tool("kubernetes_rollout_restart", {"deployment": "api", "namespace": "production"})
+
+# 6. Resolve after fix
+execute_tool("pagerduty_resolve_incident", {"incident_id": "P1234AB"})
 ```
 
----
+### Multi-cloud deployment workflow
 
-### Workflow 2: Debug a CrashLoopBackOff
+```python
+# Deploy to AWS ECS
+execute_tool("aws_ecs_deploy_service", {
+    "cluster": "production",
+    "service": "api",
+    "force_new_deployment": True
+})
 
-```bash
-# Step 1 — find the bad pod
-curl -s -X POST http://localhost:8000/tools/execute \
-  -d '{"tool_name": "k8s_get_pods", "inputs": {"namespace": "production"}}' \
-  -H "Content-Type: application/json" | jq '.data[] | select(.status != "Running")'
+# Upgrade Azure AKS workload via Helm
+execute_tool("helm_upgrade", {
+    "release": "api",
+    "chart": "myrepo/api",
+    "namespace": "production",
+    "values": {"image.tag": "v2.1.0"}
+})
 
-# Step 2 — check events for root cause
-curl -s -X POST http://localhost:8000/tools/execute \
-  -d '{"tool_name": "k8s_get_events", "inputs": {"namespace": "production", "field_selector": "type=Warning"}}' \
-  -H "Content-Type: application/json"
-
-# Step 3 — get logs from the crashed container
-curl -s -X POST http://localhost:8000/tools/execute \
-  -d '{"tool_name": "k8s_get_logs", "inputs": {"pod_name": "worker-6c8b5d7f9-mq4rs", "namespace": "production", "previous": true, "tail_lines": 100}}' \
-  -H "Content-Type: application/json"
-
-# Step 4 — force restart the pod after fix
-curl -s -X POST http://localhost:8000/tools/execute \
-  -d '{"tool_name": "k8s_delete_pod", "inputs": {"pod_name": "worker-6c8b5d7f9-mq4rs", "namespace": "production"}}' \
-  -H "Content-Type: application/json"
+# Sync GCP Cloud Run via ArgoCD
+execute_tool("argocd_sync_app", {"app_name": "cloud-run-api"})
 ```
 
----
+### GitOps release workflow
 
-### Workflow 3: Provision Infrastructure with Terraform
+```python
+# 1. Create a GitHub release
+execute_tool("github_create_release", {
+    "owner": "my-org", "repo": "api",
+    "tag": "v2.1.0", "name": "v2.1.0",
+    "body": "Release notes..."
+})
 
-```bash
-# 1. Plan first — see what will change
-curl -s -X POST http://localhost:8000/tools/execute \
-  -d '{"tool_name": "terraform_plan", "inputs": {"path": "/tmp/terraform/vpc"}}' \
-  -H "Content-Type: application/json"
+# 2. Trigger CI workflow
+execute_tool("github_trigger_workflow", {
+    "owner": "my-org", "repo": "api",
+    "workflow_id": "deploy.yml", "ref": "main"
+})
 
-# 2. Apply if plan looks good
-curl -s -X POST http://localhost:8000/tools/execute \
-  -d '{"tool_name": "terraform_apply", "inputs": {"path": "/tmp/terraform/vpc", "auto_approve": true}}' \
-  -H "Content-Type: application/json"
+# 3. Apply Terraform for infra changes
+execute_tool("terraform_apply", {"working_dir": "/infra/prod"})
 
-# 3. Open a PR to track the change
-curl -s -X POST http://localhost:8000/tools/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "github_create_pull_request",
-    "inputs": {
-      "repo": "myorg/infra",
-      "title": "infra: provision new VPC for prod-eu",
-      "body": "Applied via DevOps MCP Server.\n\nTerraform plan: 5 to add, 0 to change.",
-      "head": "infra/vpc-prod-eu",
-      "base": "main"
-    }
-  }'
+# 4. Sync ArgoCD
+execute_tool("argocd_sync_app", {"app_name": "api-production"})
 ```
 
 ---
 
 ## Adding a New Tool
 
-No changes to core logic are needed. Three steps:
-
-**Step 1** — Create `tools/<category>/<tool_name>.py`:
+1. **Create the tool file** in `tools/<service>/my_tool.py`:
 
 ```python
-# tools/monitoring/get_alerts.py
-
-TOOL_NAME = "monitoring_get_alerts"
-TOOL_DESCRIPTION = "Fetches active alerts from Prometheus AlertManager."
+TOOL_NAME = "my_service_my_action"
+TOOL_DESCRIPTION = "One-line description for AI agents."
 TOOL_INPUT_SCHEMA = {
     "type": "object",
     "properties": {
-        "severity": {"type": "string", "enum": ["critical", "warning", "info"]},
+        "param": {"type": "string", "description": "..."},
     },
+    "required": ["param"],
     "additionalProperties": False,
 }
 
-def handler(severity: str = None) -> list:
-    # your implementation here
-    return [{"alert": "HighCPU", "severity": "warning"}]
+def handler(param: str):
+    # call your integration
+    return {"result": param}
 ```
 
-**Step 2** — Register it in `server/registry.py` inside `build_registry()`:
+2. **Register it** in `server/registry.py`:
 
 ```python
-from tools.monitoring import get_alerts
+from tools.my_service import my_tool
 
 registry.register(ToolEntry(
-    name=get_alerts.TOOL_NAME,
-    description=get_alerts.TOOL_DESCRIPTION,
-    input_schema=get_alerts.TOOL_INPUT_SCHEMA,
-    handler=get_alerts.handler,
-    tags=["monitoring"],
+    name=my_tool.TOOL_NAME,
+    description=my_tool.TOOL_DESCRIPTION,
+    input_schema=my_tool.TOOL_INPUT_SCHEMA,
+    handler=my_tool.handler,
+    tags=["my_service"],
 ))
 ```
 
-**Step 3** — Done. The tool is immediately available at `/tools/execute`.
+That's it. No other files need to change.
 
 ---
 
 ## Running Tests
 
 ```bash
-# All tests
+pip install pytest pytest-asyncio pytest-mock
 pytest tests/ -v
-
-# Single file
-pytest tests/test_executor.py -v
-
-# With coverage report
-pytest tests/ -v --cov=. --cov-report=term-missing
-
-# Only tests matching a keyword
-pytest tests/ -k "registry" -v
 ```
 
 ---
 
 ## Security Model
 
-| Concern | Mitigation |
-| --- | --- |
-| Path traversal in Terraform | All paths validated against `TERRAFORM_ALLOWED_BASE_DIR` at runtime |
-| Arbitrary shell execution | `subprocess.run()` with a list (never `shell=True`) |
-| Dangerous EC2 types | Instance type validated against explicit allowlist before any API call |
-| Accidental `terraform destroy` | Requires `confirm_destroy="DESTROY"` string + `auto_approve` |
-| Global safety switch | `DRY_RUN=true` disables all destructive ops (apply, destroy, create instance) |
-| Public S3 buckets | All buckets created with `BlockPublicAcls=True` by default |
-| Container privilege | Docker image runs as non-root `mcpuser` |
-| Credential exposure | Credentials only loaded from env vars, never logged |
+- **API key auth**: Set `MCP_API_KEY` to require `Authorization: Bearer <key>` or `X-API-Key: <key>` on all requests. Leave unset for dev/local.
+- **Terraform sandboxing**: All Terraform working directories are validated to reside under `TERRAFORM_ALLOWED_BASE_DIR`. Path traversal is blocked.
+- **Helm sandboxing**: Helm binary path is configurable; no shell=True is used.
+- **K8s secrets**: `kubernetes_list_secrets` returns key names only — secret values are never returned.
+- **Vault**: Read and write operations use token-based auth. Namespace and mount are configurable.
+- **Audit log**: Every tool execution (name, inputs hash, status, duration) is logged to SQLite.
+- **DRY_RUN mode**: Set `DRY_RUN=true` to block all mutating operations without changing application code.
+- **CORS**: Set `CORS_ORIGINS` to explicit origins in production. Avoid `*` outside local dev.
+- **Destructive tag**: Tools tagged `destructive` (terminate EC2, Terraform destroy) are clearly labelled. Wire additional confirmation logic in your agent if needed.
 
 ---
 
 ## Troubleshooting
 
-**`Tool 'xxx' is not registered`**
-→ Check `GET /tools` to see all available tool names. Names are case-sensitive.
+### "Tool not found"
 
-**`Input validation failed`**
-→ The inputs don't match the tool's JSON schema. Fetch `GET /tools/{tool_name}` to see `input_schema` and required fields.
+```bash
+curl http://localhost:8000/tools | python -m json.tool | grep '"name"'
+```
 
-**`GITHUB_TOKEN environment variable is not set`**
-→ Export the variable: `export GITHUB_TOKEN=ghp_xxx` or add it to `.env`.
+Verify the tool name matches exactly (case-sensitive).
 
-**`Path '/some/path' is outside the allowed Terraform base directory`**
-→ Either move your Terraform files under `TERRAFORM_ALLOWED_BASE_DIR` or update that variable.
+### AWS authentication errors
 
-**`Instance type 'x2.large' is not allowed`**
-→ Only the types in the allowlist are permitted. Edit `ALLOWED_INSTANCE_TYPES` in `integrations/aws_client.py` to add more.
+```bash
+aws sts get-caller-identity
+```
 
-**`Server is running in DRY_RUN mode`**
-→ Set `DRY_RUN=false` in your `.env` or environment to enable destructive operations.
+Confirm your credentials are valid. The server uses the same credential chain as the AWS CLI (env vars → instance profile → ~/.aws/credentials).
 
-**`Failed to load Kubernetes config`**
-→ Set `KUBECONFIG` to your kubeconfig path, or run inside a pod (in-cluster config will be auto-detected).
+### Kubernetes connection refused
 
----
+```bash
+kubectl cluster-info
+```
 
-## Registered Tools Summary
+Confirm `KUBECONFIG` is set and the cluster is reachable.
 
-| # | Tool Name | Category | Description |
-| --- | --- | --- | --- |
-| 1 | `terraform_plan` | Terraform | Run plan, detect changes |
-| 2 | `terraform_apply` | Terraform | Apply infrastructure |
-| 3 | `terraform_destroy` | Terraform | Destroy (confirmation required) |
-| 4 | `github_create_pull_request` | GitHub | Open a PR |
-| 5 | `github_get_repo` | GitHub | Fetch repo metadata |
-| 6 | `github_list_issues` | GitHub | List issues with label/state filter |
-| 7 | `github_trigger_workflow` | GitHub | Trigger a workflow_dispatch |
-| 8 | `github_create_release` | GitHub | Create a tagged release |
-| 9 | `aws_create_ec2_instance` | AWS | Launch EC2 instance |
-| 10 | `aws_list_ec2_instances` | AWS | List instances by state |
-| 11 | `aws_create_s3_bucket` | AWS | Create bucket (public access blocked) |
-| 12 | `aws_list_s3_buckets` | AWS | List all buckets |
-| 13 | `aws_list_lambda_functions` | AWS | List Lambda functions |
-| 14 | `aws_invoke_lambda` | AWS | Invoke Lambda sync or async |
-| 15 | `aws_list_rds_instances` | AWS | List RDS instances with endpoint info |
-| 16 | `k8s_deploy` | Kubernetes | Create/update Deployment |
-| 17 | `k8s_get_pods` | Kubernetes | List pods with status |
-| 18 | `k8s_get_logs` | Kubernetes | Tail pod logs (supports previous) |
-| 19 | `k8s_get_events` | Kubernetes | Events — warnings first |
-| 20 | `k8s_scale` | Kubernetes | Change replica count |
-| 21 | `k8s_rollout_restart` | Kubernetes | Zero-downtime rolling restart |
-| 22 | `k8s_rollout_status` | Kubernetes | Verify rollout completed |
-| 23 | `k8s_get_deployments` | Kubernetes | Fleet view with image + conditions |
-| 24 | `k8s_get_services` | Kubernetes | Services with ports + external IPs |
-| 25 | `k8s_get_nodes` | Kubernetes | Node health + capacity |
-| 26 | `k8s_delete_pod` | Kubernetes | Targeted pod restart |
+### Azure authentication errors
+
+Verify all four Azure env vars are set: `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`. The server uses `DefaultAzureCredential`.
+
+### GCP authentication errors
+
+```bash
+gcloud auth application-default print-access-token
+```
+
+Or set `GOOGLE_APPLICATION_CREDENTIALS` to the path of a service account JSON key.
+
+### ArgoCD / Vault / PagerDuty connection errors
+
+These use plain HTTP (httpx). Confirm the server URL is reachable and the auth token is valid:
+
+```bash
+curl -H "Authorization: Bearer $ARGOCD_AUTH_TOKEN" $ARGOCD_SERVER_URL/api/v1/applications
+curl -H "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/sys/health
+curl -H "Authorization: Token token=$PAGERDUTY_API_KEY" https://api.pagerduty.com/incidents
+```
+
+### Terraform timeout
+
+Increase `TERRAFORM_TIMEOUT_SECONDS` (default 600). Long `apply` runs against large state files may need 900–1800s.
+
+### Helm timeout
+
+Increase `HELM_TIMEOUT_SECONDS` (default 300). Complex chart installs with many resources may take longer.
 
 ---
 
 ## License
 
-MIT — free to use, modify, and distribute.
+MIT — see [LICENSE](LICENSE).
