@@ -130,6 +130,42 @@ class Settings(BaseSettings):
         description="Default per-tool execution timeout in seconds. 0 = no timeout.",
     )
 
+    # ── Datadog ───────────────────────────────────────────────────────────────
+    datadog_api_key: Optional[str] = Field(default=None, env="DATADOG_API_KEY")
+    datadog_app_key: Optional[str] = Field(default=None, env="DATADOG_APP_KEY")
+    datadog_site: str = Field(default="datadoghq.com", env="DATADOG_SITE")
+
+    # ── Docker ────────────────────────────────────────────────────────────────
+    docker_binary: str = Field(default="docker", env="DOCKER_BINARY")
+    docker_timeout_seconds: int = Field(default=300, env="DOCKER_TIMEOUT_SECONDS")
+
+    # ── Jenkins ───────────────────────────────────────────────────────────────
+    jenkins_url: Optional[str] = Field(default=None, env="JENKINS_URL")
+    jenkins_user: Optional[str] = Field(default=None, env="JENKINS_USER")
+    jenkins_token: Optional[str] = Field(default=None, env="JENKINS_TOKEN")
+
+    # ── GitLab ────────────────────────────────────────────────────────────────
+    gitlab_token: Optional[str] = Field(default=None, env="GITLAB_TOKEN")
+    gitlab_url: str = Field(default="https://gitlab.com", env="GITLAB_URL")
+
+    # ── Cloudflare ────────────────────────────────────────────────────────────
+    cloudflare_api_token: Optional[str] = Field(default=None, env="CLOUDFLARE_API_TOKEN")
+    cloudflare_account_id: Optional[str] = Field(default=None, env="CLOUDFLARE_ACCOUNT_ID")
+
+    # ── Ansible ───────────────────────────────────────────────────────────────
+    ansible_binary: str = Field(default="ansible", env="ANSIBLE_BINARY")
+    ansible_playbook_binary: str = Field(default="ansible-playbook", env="ANSIBLE_PLAYBOOK_BINARY")
+    ansible_timeout_seconds: int = Field(default=600, env="ANSIBLE_TIMEOUT_SECONDS")
+
+    # ── Security scanners ─────────────────────────────────────────────────────
+    trivy_binary: str = Field(default="trivy", env="TRIVY_BINARY")
+    tfsec_binary: str = Field(default="tfsec", env="TFSEC_BINARY")
+    scanner_timeout_seconds: int = Field(default=120, env="SCANNER_TIMEOUT_SECONDS")
+
+    # ── Infracost ─────────────────────────────────────────────────────────────
+    infracost_binary: str = Field(default="infracost", env="INFRACOST_BINARY")
+    infracost_api_key: Optional[str] = Field(default=None, env="INFRACOST_API_KEY")
+
     def cors_origins_list(self) -> list[str]:
         """Return CORS_ORIGINS parsed into a list."""
         if self.cors_origins.strip() == "*":

@@ -185,3 +185,42 @@ class AzureResourceClient:
             }
             for g in groups
         ]
+
+
+class AzureCostClient:
+    """Azure Cost Management — spend analysis."""
+
+    def __init__(self) -> None:
+        creds = get_azure_credentials()
+        self._subscription_id = creds["subscription_id"]
+        from azure.identity import DefaultAzureCredential
+        self._credential = DefaultAzureCredential()
+
+    def get_cost_by_service(self, start_date: str, end_date: str) -> Dict[str, Any]:
+        try:
+            from azure.mgmt.costmanagement import CostManagementClient
+            from azure.mgmt.costmanagement.models import (
+                QueryDefinition, QueryTimePeriod, QueryDataset, QueryAggregation, QueryGrouping, TimeframeType
+            )
+            client = CostManagementClient(self._credential)
+            scope = f"/subscriptions/{self._subscription_id}"
+            query = QueryDefinition(
+                type="ActualCost",
+                timeframe=TimeframeType.CUSTOM,
+                time_period=QueryTimePeriod(from_property=start_date, to=end_date),
+                dataset=QueryDataset(
+                    granularity="None",
+                    aggregation={"totalCost": QueryAggregation(name="Cost", function="Sum")},
+                    grouping=[QueryGrouping(type="Dimension", name="ServiceName")],
+                ),
+            )
+            result = client.query.usage(scope=scope, parameters=query)
+        except Exception as exc:
+            raise AzureClientError(f"get_cost_by_service failed: {exc}") from exc
+        rows = result.rows or []
+        columns = [c.name for c in (result.columns or [])]
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "breakdown": [dict(zip(columns, row)) for row in rows],
+        }

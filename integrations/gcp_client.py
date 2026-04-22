@@ -183,6 +183,46 @@ class GCPCloudBuildClient:
         return {"build_id": resp.get("name", "").split("/")[-1], "trigger_id": trigger_id, "branch": branch, "status": "QUEUED"}
 
 
+class GCPSecretManagerClient:
+    def __init__(self) -> None:
+        self._project = _project_id()
+
+    def get_secret(self, secret_id: str, version: str = "latest") -> Dict[str, Any]:
+        from google.cloud import secretmanager
+        try:
+            client = secretmanager.SecretManagerServiceClient()
+            name = f"projects/{self._project}/secrets/{secret_id}/versions/{version}"
+            response = client.access_secret_version(request={"name": name})
+        except Exception as exc:
+            raise GCPClientError(f"get_secret failed: {exc}") from exc
+        return {"secret_id": secret_id, "version": version, "value": response.payload.data.decode("utf-8")}
+
+    def list_secrets(self) -> List[Dict[str, Any]]:
+        from google.cloud import secretmanager
+        try:
+            client = secretmanager.SecretManagerServiceClient()
+            secrets = list(client.list_secrets(request={"parent": f"projects/{self._project}"}))
+        except Exception as exc:
+            raise GCPClientError(f"list_secrets failed: {exc}") from exc
+        return [{"name": s.name.split("/")[-1], "full_name": s.name} for s in secrets]
+
+    def create_secret(self, secret_id: str, value: str) -> Dict[str, Any]:
+        from google.cloud import secretmanager
+        try:
+            client = secretmanager.SecretManagerServiceClient()
+            secret = client.create_secret(
+                request={
+                    "parent": f"projects/{self._project}",
+                    "secret_id": secret_id,
+                    "secret": {"replication": {"automatic": {}}},
+                }
+            )
+            client.add_secret_version(request={"parent": secret.name, "payload": {"data": value.encode("utf-8")}})
+        except Exception as exc:
+            raise GCPClientError(f"create_secret failed: {exc}") from exc
+        return {"secret_id": secret_id, "status": "created"}
+
+
 class GCPContainerClient:
     """GCP Kubernetes Engine (GKE) operations used by MCP tool handlers."""
 

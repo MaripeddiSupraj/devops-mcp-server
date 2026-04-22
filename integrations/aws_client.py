@@ -949,3 +949,178 @@ class RDSClient:
         db = resp["DBInstance"]
         log.info("rds_restored", snapshot=snapshot_identifier, target=target_identifier)
         return {"identifier": db["DBInstanceIdentifier"], "status": db["DBInstanceStatus"]}
+
+
+# ── SQS ───────────────────────────────────────────────────────────────────────
+
+class SQSClient:
+    def __init__(self) -> None:
+        creds = get_aws_credentials()
+        self._sqs = boto3.client("sqs", **creds)
+
+    def list_queues(self, prefix: Optional[str] = None) -> List[Dict[str, Any]]:
+        kwargs: Dict[str, Any] = {}
+        if prefix:
+            kwargs["QueueNamePrefix"] = prefix
+        try:
+            resp = self._sqs.list_queues(**kwargs)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"list_queues failed: {exc}") from exc
+        urls = resp.get("QueueUrls", [])
+        results = []
+        for url in urls:
+            name = url.split("/")[-1]
+            results.append({"name": name, "url": url})
+        return results
+
+    def send_message(self, queue_url: str, body: str, delay_seconds: int = 0) -> Dict[str, Any]:
+        try:
+            resp = self._sqs.send_message(
+                QueueUrl=queue_url,
+                MessageBody=body,
+                DelaySeconds=delay_seconds,
+            )
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"send_message failed: {exc}") from exc
+        log.info("sqs_message_sent", queue=queue_url, message_id=resp["MessageId"])
+        return {"message_id": resp["MessageId"], "queue_url": queue_url}
+
+    def get_queue_attributes(self, queue_url: str) -> Dict[str, Any]:
+        try:
+            resp = self._sqs.get_queue_attributes(
+                QueueUrl=queue_url,
+                AttributeNames=["All"],
+            )
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"get_queue_attributes failed: {exc}") from exc
+        attrs = resp.get("Attributes", {})
+        return {
+            "url": queue_url,
+            "approximate_messages": attrs.get("ApproximateNumberOfMessages"),
+            "approximate_messages_not_visible": attrs.get("ApproximateNumberOfMessagesNotVisible"),
+            "created": attrs.get("CreatedTimestamp"),
+            "arn": attrs.get("QueueArn"),
+        }
+
+    def purge_queue(self, queue_url: str) -> Dict[str, Any]:
+        try:
+            self._sqs.purge_queue(QueueUrl=queue_url)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"purge_queue failed: {exc}") from exc
+        log.info("sqs_queue_purged", queue=queue_url)
+        return {"queue_url": queue_url, "status": "purged"}
+
+
+# ── SNS ───────────────────────────────────────────────────────────────────────
+
+class SNSClient:
+    def __init__(self) -> None:
+        creds = get_aws_credentials()
+        self._sns = boto3.client("sns", **creds)
+
+    def list_topics(self) -> List[Dict[str, Any]]:
+        try:
+            paginator = self._sns.get_paginator("list_topics")
+            topics = []
+            for page in paginator.paginate():
+                for t in page.get("Topics", []):
+                    arn = t["TopicArn"]
+                    topics.append({"arn": arn, "name": arn.split(":")[-1]})
+            return topics
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"list_topics failed: {exc}") from exc
+
+    def publish(self, topic_arn: str, message: str, subject: Optional[str] = None) -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {"TopicArn": topic_arn, "Message": message}
+        if subject:
+            kwargs["Subject"] = subject
+        try:
+            resp = self._sns.publish(**kwargs)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"sns_publish failed: {exc}") from exc
+        log.info("sns_published", topic=topic_arn, message_id=resp["MessageId"])
+        return {"message_id": resp["MessageId"], "topic_arn": topic_arn}
+
+    def list_subscriptions(self, topic_arn: Optional[str] = None) -> List[Dict[str, Any]]:
+        try:
+            if topic_arn:
+                paginator = self._sns.get_paginator("list_subscriptions_by_topic")
+                pages = paginator.paginate(TopicArn=topic_arn)
+            else:
+                paginator = self._sns.get_paginator("list_subscriptions")
+                pages = paginator.paginate()
+            subs = []
+            for page in pages:
+                for s in page.get("Subscriptions", []):
+                    subs.append({
+                        "arn": s.get("SubscriptionArn"),
+                        "protocol": s.get("Protocol"),
+                        "endpoint": s.get("Endpoint"),
+                        "topic_arn": s.get("TopicArn"),
+                    })
+            return subs
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"list_subscriptions failed: {exc}") from exc
+
+
+# ── DynamoDB ──────────────────────────────────────────────────────────────────
+
+class DynamoDBClient:
+    def __init__(self) -> None:
+        creds = get_aws_credentials()
+        self._ddb = boto3.client("dynamodb", **creds)
+        self._resource = boto3.resource("dynamodb", **creds)
+
+    def list_tables(self) -> List[str]:
+        try:
+            paginator = self._ddb.get_paginator("list_tables")
+            tables = []
+            for page in paginator.paginate():
+                tables.extend(page.get("TableNames", []))
+            return tables
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"list_tables failed: {exc}") from exc
+
+    def describe_table(self, table_name: str) -> Dict[str, Any]:
+        try:
+            resp = self._ddb.describe_table(TableName=table_name)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"describe_table failed: {exc}") from exc
+        t = resp["Table"]
+        return {
+            "name": t["TableName"],
+            "status": t["TableStatus"],
+            "item_count": t.get("ItemCount"),
+            "size_bytes": t.get("TableSizeBytes"),
+            "key_schema": t.get("KeySchema"),
+            "billing_mode": t.get("BillingModeSummary", {}).get("BillingMode", "PROVISIONED"),
+        }
+
+    def get_item(self, table_name: str, key: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            table = self._resource.Table(table_name)
+            resp = table.get_item(Key=key)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"get_item failed: {exc}") from exc
+        return resp.get("Item")
+
+    def put_item(self, table_name: str, item: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            table = self._resource.Table(table_name)
+            table.put_item(Item=item)
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"put_item failed: {exc}") from exc
+        log.info("dynamodb_item_put", table=table_name)
+        return {"table": table_name, "status": "ok"}
+
+    def query_table(self, table_name: str, key_condition: str, expression_values: Dict[str, Any], limit: int = 25) -> List[Dict[str, Any]]:
+        try:
+            table = self._resource.Table(table_name)
+            resp = table.query(
+                KeyConditionExpression=key_condition,
+                ExpressionAttributeValues=expression_values,
+                Limit=limit,
+            )
+        except (ClientError, BotoCoreError) as exc:
+            raise AWSClientError(f"query_table failed: {exc}") from exc
+        return resp.get("Items", [])
