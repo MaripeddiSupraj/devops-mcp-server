@@ -2,11 +2,12 @@
 
 > **MCP name: io.github.maripeddisupraj/devops-mcp-server**
 >
-> A **production-grade Model Context Protocol (MCP) server** that exposes 103 tools across Terraform, GitHub, AWS, Kubernetes, Helm, Azure, GCP, ArgoCD, HashiCorp Vault, and PagerDuty as structured JSON tool APIs — designed for AI agents (LangGraph, AutoGen, Claude) to automate DevOps workflows end-to-end.
+> A **production-grade Model Context Protocol (MCP) server** that exposes **160 tools across 20 services** — Terraform, GitHub, GitLab, AWS, Kubernetes, Helm, Azure, GCP, ArgoCD, HashiCorp Vault, PagerDuty, Datadog, Docker, Jenkins, Cloudflare, Ansible, and more — as structured JSON tool APIs designed for AI agents to automate DevOps workflows end-to-end.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-green)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tools](https://img.shields.io/badge/tools-160-orange)](https://github.com/MaripeddiSupraj/devops-mcp-server)
 
 ---
 
@@ -23,6 +24,7 @@
 - [Tool Reference](#tool-reference)
   - [Terraform Tools](#terraform-tools)
   - [GitHub Tools](#github-tools)
+  - [GitLab Tools](#gitlab-tools)
   - [AWS Tools](#aws-tools)
   - [Kubernetes Tools](#kubernetes-tools)
   - [Helm Tools](#helm-tools)
@@ -31,6 +33,15 @@
   - [ArgoCD Tools](#argocd-tools)
   - [HashiCorp Vault Tools](#hashicorp-vault-tools)
   - [PagerDuty Tools](#pagerduty-tools)
+  - [Datadog Tools](#datadog-tools)
+  - [Docker Tools](#docker-tools)
+  - [Jenkins Tools](#jenkins-tools)
+  - [Cloudflare Tools](#cloudflare-tools)
+  - [Ansible Tools](#ansible-tools)
+  - [Security Scanning Tools](#security-scanning-tools)
+  - [GCP Secret Manager Tools](#gcp-secret-manager-tools)
+  - [Multi-cloud FinOps Tools](#multi-cloud-finops-tools)
+- [Tool Summary](#tool-summary)
 - [Example Workflows](#example-workflows)
 - [Adding a New Tool](#adding-a-new-tool)
 - [Running Tests](#running-tests)
@@ -41,63 +52,65 @@
 
 ## What is This?
 
-This server implements the [Model Context Protocol](https://modelcontextprotocol.io) — a standard that lets AI agents discover and invoke tools over HTTP or stdio. Instead of hard-coding SDK calls into your AI agent, you point it at this server and it dynamically discovers what DevOps operations are available.
+This server implements the [Model Context Protocol](https://modelcontextprotocol.io) — a standard that lets AI agents discover and invoke tools over HTTP or stdio. Instead of hard-coding SDK calls into your agent, you point it at this server and it dynamically discovers 160 DevOps operations across 20 platforms.
 
 **Without MCP:**
 
 ```text
 Agent → custom boto3 code → AWS
 Agent → custom subprocess → Terraform
-Agent → custom SDK calls → Azure / GCP / K8s / ...
+Agent → custom SDK → Azure / GCP / K8s / Datadog / ...
 ```
 
 **With MCP:**
 
 ```text
-Agent → POST /tools/execute → MCP Server → AWS / Terraform / GitHub / K8s / Azure / GCP / ...
+Agent → POST /tools/execute → MCP Server → any of 20 platforms
 ```
 
-The agent calls one endpoint with a tool name and JSON inputs. The server handles all SDK complexity, authentication, validation, and error formatting across **10 platforms with 103 tools**.
+The agent calls one endpoint with a tool name and JSON inputs. The server handles all SDK complexity, authentication, validation, timeout, audit logging, and error formatting.
 
 ---
 
 ## Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                          AI Agent                               │
-│          (Claude / LangGraph / AutoGen / custom)                │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ POST /tools/execute  OR  stdio (MCP)
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     FastAPI MCP Server                          │
-│                                                                 │
-│   GET /tools          →  ToolRegistry (list all 103 tools)      │
-│   POST /tools/execute →  ToolExecutor (validate + run)          │
-│   GET /tools/{name}   →  ToolRegistry (describe one tool)       │
-│   GET /metrics        →  Prometheus metrics                     │
-└──────────┬──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                           AI Agent                                 │
+│           (Claude / LangGraph / AutoGen / custom)                  │
+└────────────────────────┬───────────────────────────────────────────┘
+                         │  POST /tools/execute  OR  stdio (MCP)
+                         ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                      FastAPI MCP Server                            │
+│                                                                    │
+│   GET /tools           →  ToolRegistry (list all 160 tools)        │
+│   POST /tools/execute  →  ToolExecutor (validate + run)            │
+│   GET /tools/{name}    →  ToolRegistry (describe one tool)         │
+│   GET /metrics         →  Prometheus metrics                       │
+└──────────┬─────────────────────────────────────────────────────────┘
            │
-    ┌──────┴──────────────────────────────────────────────────┐
-    │                    Tool Handlers (10 services)           │
-    │  terraform/  github/  aws/  kubernetes/  helm/           │
-    │  azure/      gcp/     argocd/  vault/    pagerduty/      │
-    └──────┬──────────────────────────────────────────────────┘
+    ┌──────┴──────────────────────────────────────────────────────┐
+    │               Tool Handlers (20 services)                    │
+    │  terraform  github   gitlab   aws   kubernetes  helm         │
+    │  azure      gcp      argocd   vault  pagerduty  datadog      │
+    │  docker     jenkins  cloudflare  ansible  security  finops   │
+    └──────┬──────────────────────────────────────────────────────┘
            │
-    ┌──────┴──────────────────────────────────────────────────┐
-    │                      Integrations                        │
-    │  subprocess(tf/helm)  PyGithub   boto3   k8s-client     │
-    │  azure-sdk            google-cloud-sdk   httpx(rest)    │
-    └─────────────────────────────────────────────────────────┘
+    ┌──────┴──────────────────────────────────────────────────────┐
+    │                     Integrations                             │
+    │  subprocess(tf/helm/docker/ansible/trivy/tfsec/infracost)   │
+    │  boto3  PyGithub  k8s-client  azure-sdk  google-cloud-sdk   │
+    │  httpx(argocd/vault/pagerduty/datadog/gitlab/jenkins/cf)    │
+    └─────────────────────────────────────────────────────────────┘
 ```
 
 **Request lifecycle:**
 
 1. Agent sends `POST /tools/execute` with `tool_name` and `inputs`
 2. `ToolExecutor` validates inputs against the tool's JSON Schema
-3. Handler is resolved from `ToolRegistry`
-4. Handler calls the integration (boto3, PyGithub, subprocess, httpx, etc.)
+3. Handler is resolved from `ToolRegistry` and dispatched
+4. Handler calls the integration (boto3, subprocess, httpx, etc.)
 5. Result wrapped in `{"status": "success"|"error", "data": ..., "error": ...}`
 6. Execution logged to SQLite audit DB + optional Slack notification
 
@@ -117,7 +130,7 @@ devops-mcp-server/
 │
 ├── core/
 │   ├── config.py            # pydantic-settings — all env vars
-│   ├── auth.py              # API key middleware + cloud credential helpers
+│   ├── auth.py              # API key middleware + credential helpers
 │   ├── logger.py            # structlog structured logging
 │   └── audit.py             # SQLite audit trail (WAL mode)
 │
@@ -125,9 +138,11 @@ devops-mcp-server/
 │   ├── terraform/           # plan, apply, destroy, init, validate, output, state_list
 │   ├── github/              # create_pr, get_repo, list_issues, trigger_workflow,
 │   │                        #   create_release, create_issue, merge_pr, get_workflow_run
+│   ├── gitlab/              # list_projects, list_mrs, create_mr, merge_mr,
+│   │                        #   list_pipelines, trigger_pipeline, list_issues
 │   ├── aws/                 # ec2, s3, lambda, rds, ec2_lifecycle, s3_objects,
 │   │                        #   cloudwatch, secrets, networking, iam, rds_crud,
-│   │                        #   ecs, cost, ecr, alb
+│   │                        #   ecs, cost, ecr, alb, sqs, sns, dynamodb
 │   ├── kubernetes/          # deploy, get_pods, get_logs, get_events, scale,
 │   │                        #   rollout_restart, rollout_status, get_deployments,
 │   │                        #   get_services, get_nodes, delete_pod,
@@ -135,28 +150,44 @@ devops-mcp-server/
 │   ├── helm/                # list, install, upgrade, rollback, status
 │   ├── azure/               # rg_list, vm_list, vm_start, vm_stop,
 │   │                        #   aks_list, acr_list, kv_get, kv_set
-│   ├── gcp/                 # instances, buckets, gke, cloudrun,
-│   │                        #   cloudsql, cloudbuild_list, cloudbuild_trigger
+│   ├── gcp/                 # instances, buckets, gke, cloudrun, cloudsql,
+│   │                        #   cloudbuild, secret_manager
 │   ├── argocd/              # list, status, sync, rollback
 │   ├── vault/               # read, write, list
-│   └── pagerduty/           # list_incidents, acknowledge, resolve, create
+│   ├── pagerduty/           # list_incidents, acknowledge, resolve, create
+│   ├── datadog/             # monitors, metrics, events, dashboards, incidents, hosts
+│   ├── docker/              # list_images, pull, build, push, inspect,
+│   │                        #   list_containers, logs, tag
+│   ├── jenkins/             # list_jobs, get_job, trigger_build, get_build,
+│   │                        #   get_build_log, list_builds
+│   ├── cloudflare/          # list_zones, dns_records, purge_cache, waf_rules
+│   ├── ansible/             # run_playbook, list_hosts, ping, run_module
+│   ├── security/            # trivy_scan_image, trivy_scan_filesystem, tfsec_scan
+│   └── finops/              # azure_cost, gcp_billing, infracost_estimate
 │
 ├── integrations/
 │   ├── terraform_runner.py  # Terraform subprocess wrapper
 │   ├── helm_runner.py       # Helm subprocess wrapper
-│   ├── aws_client.py        # boto3 client classes (13 services)
+│   ├── docker_runner.py     # Docker CLI subprocess wrapper
+│   ├── ansible_runner.py    # Ansible CLI subprocess wrapper
+│   ├── scanner_runner.py    # Trivy + tfsec subprocess wrappers
+│   ├── aws_client.py        # boto3 client classes (15 services)
 │   ├── github_client.py     # PyGithub wrapper
+│   ├── gitlab_client.py     # GitLab REST API v4 (httpx)
 │   ├── k8s_client.py        # kubernetes-client/python wrapper
-│   ├── azure_client.py      # Azure SDK client classes
-│   ├── gcp_client.py        # GCP SDK client classes
+│   ├── azure_client.py      # Azure SDK client classes + Cost Management
+│   ├── gcp_client.py        # GCP SDK client classes + Secret Manager + Billing
 │   ├── argocd_client.py     # ArgoCD REST API (httpx)
 │   ├── vault_client.py      # Vault KV v2 REST API (httpx)
-│   └── pagerduty_client.py  # PagerDuty REST API v2 (httpx)
+│   ├── pagerduty_client.py  # PagerDuty REST API v2 (httpx)
+│   ├── datadog_client.py    # Datadog REST API v1/v2 (httpx)
+│   ├── jenkins_client.py    # Jenkins REST API (httpx)
+│   └── cloudflare_client.py # Cloudflare REST API v4 (httpx)
 │
 ├── tests/
 ├── Dockerfile
 ├── docker-compose.yml
-├── pyproject.toml           # PyPI packaging
+├── pyproject.toml           # PyPI packaging (v4.0.0)
 ├── requirements.txt
 └── .env.example
 ```
@@ -178,20 +209,19 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env with your credentials (see Configuration section)
+# Fill in credentials for the services you want to use
 ```
 
 ### 3. Start the server
 
 ```bash
 uvicorn server.main:app --reload
-# Server runs on http://localhost:8000
 ```
 
-### 4. Discover tools
+### 4. Verify 160 tools are registered
 
 ```bash
-curl http://localhost:8000/tools | python -m json.tool | head -60
+curl http://localhost:8000/tools | python -m json.tool | grep '"count"'
 ```
 
 ### 5. Execute a tool
@@ -199,14 +229,14 @@ curl http://localhost:8000/tools | python -m json.tool | head -60
 ```bash
 curl -X POST http://localhost:8000/tools/execute \
   -H "Content-Type: application/json" \
-  -d '{"tool_name": "aws_list_ec2_instances", "inputs": {"region": "us-east-1"}}'
+  -d '{"tool_name": "aws_list_ec2_instances", "inputs": {}}'
 ```
 
 ---
 
 ## Configuration
 
-All settings are read from environment variables (or `.env` file). Only configure the services you actually use.
+All settings are read from environment variables (or `.env` file). Only configure the services you use — unconfigured services will return a clear error when called.
 
 ### Core Server
 
@@ -215,10 +245,10 @@ All settings are read from environment variables (or `.env` file). Only configur
 | `SERVER_HOST` | `0.0.0.0` | Bind host |
 | `SERVER_PORT` | `8000` | Bind port |
 | `LOG_LEVEL` | `INFO` | Logging level |
-| `DRY_RUN` | `false` | Skip mutating operations |
-| `MCP_API_KEY` | *(none)* | API key for request auth (leave unset for dev) |
+| `DRY_RUN` | `false` | Block all mutating operations |
+| `MCP_API_KEY` | *(none)* | API key for request auth |
 | `ENVIRONMENT` | `development` | Runtime label |
-| `CORS_ORIGINS` | `*` | Comma-separated CORS origins |
+| `CORS_ORIGINS` | `*` | Comma-separated allowed CORS origins |
 | `AUDIT_DB_PATH` | `audit.db` | SQLite audit log path |
 | `TOOL_TIMEOUT_SECONDS` | `120` | Default per-tool timeout |
 
@@ -228,11 +258,18 @@ All settings are read from environment variables (or `.env` file). Only configur
 |---|---|
 | `GITHUB_TOKEN` | Personal access token with repo scope |
 
+### GitLab
+
+| Variable | Default | Description |
+|---|---|---|
+| `GITLAB_TOKEN` | *(none)* | GitLab personal access token |
+| `GITLAB_URL` | `https://gitlab.com` | GitLab instance URL (self-hosted supported) |
+
 ### AWS
 
 | Variable | Default | Description |
 |---|---|---|
-| `AWS_ACCESS_KEY_ID` | *(none)* | AWS access key (or use instance profile) |
+| `AWS_ACCESS_KEY_ID` | *(none)* | AWS access key |
 | `AWS_SECRET_ACCESS_KEY` | *(none)* | AWS secret key |
 | `AWS_REGION` | `us-east-1` | Default region |
 
@@ -240,22 +277,22 @@ All settings are read from environment variables (or `.env` file). Only configur
 
 | Variable | Description |
 |---|---|
-| `KUBECONFIG` | Path to kubeconfig file (defaults to `~/.kube/config`) |
+| `KUBECONFIG` | Path to kubeconfig file |
 
 ### Terraform
 
 | Variable | Default | Description |
 |---|---|---|
 | `TERRAFORM_BINARY` | `terraform` | Path to terraform binary |
-| `TERRAFORM_ALLOWED_BASE_DIR` | `/tmp/terraform` | Root directory for allowed Terraform paths |
-| `TERRAFORM_TIMEOUT_SECONDS` | `600` | Max seconds per Terraform command |
+| `TERRAFORM_ALLOWED_BASE_DIR` | `/tmp/terraform` | Sandbox root for all Terraform paths |
+| `TERRAFORM_TIMEOUT_SECONDS` | `600` | Max seconds per command |
 
 ### Helm
 
 | Variable | Default | Description |
 |---|---|---|
 | `HELM_BINARY` | `helm` | Path to helm binary |
-| `HELM_TIMEOUT_SECONDS` | `300` | Max seconds per Helm command |
+| `HELM_TIMEOUT_SECONDS` | `300` | Max seconds per command |
 
 ### Azure
 
@@ -271,13 +308,13 @@ All settings are read from environment variables (or `.env` file). Only configur
 | Variable | Description |
 |---|---|
 | `GCP_PROJECT_ID` | GCP project ID |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON key file |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account JSON key |
 
 ### ArgoCD
 
 | Variable | Default | Description |
 |---|---|---|
-| `ARGOCD_SERVER_URL` | *(none)* | ArgoCD server URL (e.g. `https://argocd.example.com`) |
+| `ARGOCD_SERVER_URL` | *(none)* | ArgoCD server URL |
 | `ARGOCD_AUTH_TOKEN` | *(none)* | ArgoCD API token |
 | `ARGOCD_INSECURE` | `false` | Skip TLS verification |
 
@@ -285,9 +322,9 @@ All settings are read from environment variables (or `.env` file). Only configur
 
 | Variable | Default | Description |
 |---|---|---|
-| `VAULT_ADDR` | *(none)* | Vault server address (e.g. `https://vault.example.com`) |
+| `VAULT_ADDR` | *(none)* | Vault server address |
 | `VAULT_TOKEN` | *(none)* | Vault token |
-| `VAULT_NAMESPACE` | *(none)* | Vault namespace (Enterprise only) |
+| `VAULT_NAMESPACE` | *(none)* | Vault namespace (Enterprise) |
 | `VAULT_MOUNT` | `secret` | KV v2 mount path |
 
 ### PagerDuty
@@ -295,20 +332,73 @@ All settings are read from environment variables (or `.env` file). Only configur
 | Variable | Description |
 |---|---|
 | `PAGERDUTY_API_KEY` | PagerDuty REST API v2 key |
-| `PAGERDUTY_EMAIL` | Email address for incident creation (From header) |
+| `PAGERDUTY_EMAIL` | From email for incident creation |
 | `PAGERDUTY_SERVICE_ID` | Default service ID for new incidents |
+
+### Datadog
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATADOG_API_KEY` | *(none)* | Datadog API key |
+| `DATADOG_APP_KEY` | *(none)* | Datadog application key |
+| `DATADOG_SITE` | `datadoghq.com` | Datadog site (`datadoghq.eu` for EU) |
+
+### Docker
+
+| Variable | Default | Description |
+|---|---|---|
+| `DOCKER_BINARY` | `docker` | Path to docker binary |
+| `DOCKER_TIMEOUT_SECONDS` | `300` | Max seconds per command |
+
+### Jenkins
+
+| Variable | Description |
+|---|---|
+| `JENKINS_URL` | Jenkins server URL |
+| `JENKINS_USER` | Jenkins username |
+| `JENKINS_TOKEN` | Jenkins API token |
+
+### Cloudflare
+
+| Variable | Description |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API token |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+
+### Ansible
+
+| Variable | Default | Description |
+|---|---|---|
+| `ANSIBLE_BINARY` | `ansible` | Path to ansible binary |
+| `ANSIBLE_PLAYBOOK_BINARY` | `ansible-playbook` | Path to ansible-playbook binary |
+| `ANSIBLE_TIMEOUT_SECONDS` | `600` | Max seconds per command |
+
+### Security Scanners
+
+| Variable | Default | Description |
+|---|---|---|
+| `TRIVY_BINARY` | `trivy` | Path to trivy binary |
+| `TFSEC_BINARY` | `tfsec` | Path to tfsec binary |
+| `SCANNER_TIMEOUT_SECONDS` | `120` | Max seconds per scan |
+
+### Infracost
+
+| Variable | Description |
+|---|---|
+| `INFRACOST_API_KEY` | Infracost API key |
+| `INFRACOST_BINARY` | Path to infracost binary (default: `infracost`) |
 
 ### Slack (optional)
 
 | Variable | Description |
 |---|---|
-| `SLACK_WEBHOOK_URL` | Incoming webhook URL for tool notifications |
+| `SLACK_WEBHOOK_URL` | Incoming webhook for tool notifications |
 
 ---
 
 ## Running the Server
 
-### HTTP mode (API / agent usage)
+### HTTP mode
 
 ```bash
 uvicorn server.main:app --host 0.0.0.0 --port 8000
@@ -326,10 +416,11 @@ devops-mcp-server
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/tools` | List all registered tools |
+| `GET` | `/tools` | List all 160 tools |
 | `GET` | `/tools?tag=aws` | Filter tools by tag |
-| `GET` | `/tools/{name}` | Describe a single tool |
+| `GET` | `/tools/{name}` | Describe one tool |
 | `POST` | `/tools/execute` | Execute a tool |
+| `POST` | `/tools/batch` | Execute multiple tools |
 | `GET` | `/health` | Health check |
 | `GET` | `/metrics` | Prometheus metrics |
 
@@ -346,6 +437,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "command": "devops-mcp-server",
       "env": {
         "GITHUB_TOKEN": "ghp_...",
+        "GITLAB_TOKEN": "glpat-...",
         "AWS_ACCESS_KEY_ID": "AKIA...",
         "AWS_SECRET_ACCESS_KEY": "...",
         "AWS_REGION": "us-east-1",
@@ -356,6 +448,12 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
         "AZURE_CLIENT_SECRET": "...",
         "GCP_PROJECT_ID": "my-project",
         "GOOGLE_APPLICATION_CREDENTIALS": "/home/user/gcp-key.json",
+        "DATADOG_API_KEY": "...",
+        "DATADOG_APP_KEY": "...",
+        "JENKINS_URL": "https://jenkins.example.com",
+        "JENKINS_USER": "admin",
+        "JENKINS_TOKEN": "...",
+        "CLOUDFLARE_API_TOKEN": "...",
         "ARGOCD_SERVER_URL": "https://argocd.example.com",
         "ARGOCD_AUTH_TOKEN": "...",
         "VAULT_ADDR": "https://vault.example.com",
@@ -372,13 +470,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ## Docker
 
 ```bash
-# Build
 docker build -t devops-mcp-server .
-
-# Run with env file
 docker run --env-file .env -p 8000:8000 devops-mcp-server
-
-# Or with docker-compose
+# or
 docker-compose up
 ```
 
@@ -390,15 +484,13 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `terraform_plan` | Run `terraform plan` in a directory; returns the plan output |
-| `terraform_apply` | Run `terraform apply -auto-approve`; returns apply output |
-| `terraform_destroy` | Run `terraform destroy -auto-approve`; destructive |
-| `terraform_init` | Run `terraform init` to initialize providers and modules |
-| `terraform_validate` | Run `terraform validate` to check configuration syntax |
-| `terraform_output` | Run `terraform output -json` to retrieve output values |
-| `terraform_state_list` | Run `terraform state list` to enumerate managed resources |
-
-**Required env:** `TERRAFORM_BINARY` (defaults to `terraform` on PATH)
+| `terraform_plan` | Run `terraform plan` — returns the plan output |
+| `terraform_apply` | Run `terraform apply -auto-approve` |
+| `terraform_destroy` | Run `terraform destroy -auto-approve` (destructive) |
+| `terraform_init` | Run `terraform init` to initialize providers |
+| `terraform_validate` | Validate configuration syntax |
+| `terraform_output` | Get output values as JSON |
+| `terraform_state_list` | List all managed resources |
 
 ---
 
@@ -406,16 +498,32 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `github_create_pr` | Create a pull request in a repository |
-| `github_get_repo` | Get metadata for a repository |
-| `github_list_issues` | List open issues, optionally filtered by label |
+| `github_create_pull_request` | Create a pull request |
+| `github_get_repo` | Get repository metadata |
+| `github_list_issues` | List open issues |
 | `github_trigger_workflow` | Trigger a workflow dispatch event |
-| `github_create_release` | Create a tagged release with release notes |
-| `github_create_issue` | Create a new issue with title, body, and labels |
-| `github_merge_pr` | Merge an open pull request by number |
-| `github_get_workflow_run` | Get the status and conclusion of a workflow run |
+| `github_create_release` | Create a tagged release |
+| `github_create_issue` | Create a new issue |
+| `github_merge_pull_request` | Merge an open pull request |
+| `github_get_workflow_run` | Get workflow run status |
 
 **Required env:** `GITHUB_TOKEN`
+
+---
+
+### GitLab Tools
+
+| Tool | Description |
+|---|---|
+| `gitlab_list_projects` | List accessible projects |
+| `gitlab_list_merge_requests` | List MRs by state (opened/merged/closed) |
+| `gitlab_create_merge_request` | Create a merge request |
+| `gitlab_merge_mr` | Merge an open MR |
+| `gitlab_list_pipelines` | List CI/CD pipelines |
+| `gitlab_trigger_pipeline` | Trigger a pipeline on a ref |
+| `gitlab_list_issues` | List project issues |
+
+**Required env:** `GITLAB_TOKEN`, `GITLAB_URL`
 
 ---
 
@@ -425,100 +533,126 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `aws_describe_ec2_instance` | Describe a specific EC2 instance by ID |
-| `aws_list_ec2_instances` | List EC2 instances, optionally filtered by state |
-| `aws_stop_ec2_instance` | Stop a running EC2 instance |
-| `aws_start_ec2_instance` | Start a stopped EC2 instance |
-| `aws_terminate_ec2_instance` | Terminate an EC2 instance (destructive) |
+| `aws_describe_ec2_instance` | Describe an EC2 instance |
+| `aws_list_ec2_instances` | List EC2 instances |
+| `aws_stop_ec2_instance` | Stop an instance |
+| `aws_start_ec2_instance` | Start an instance |
+| `aws_terminate_ec2_instance` | Terminate an instance (destructive) |
 
 #### S3
 
 | Tool | Description |
 |---|---|
-| `aws_list_s3_buckets` | List all S3 buckets in the account |
-| `aws_create_s3_bucket` | Create a new S3 bucket |
-| `aws_list_s3_objects` | List objects in a bucket with optional prefix filter |
-| `aws_upload_s3_object` | Upload text content to an S3 object |
+| `aws_list_s3_buckets` | List all S3 buckets |
+| `aws_create_s3_bucket` | Create a bucket |
+| `aws_list_s3_objects` | List objects with prefix filter |
+| `aws_upload_s3_object` | Upload text content to an object |
 
 #### Lambda
 
 | Tool | Description |
 |---|---|
-| `aws_list_lambda_functions` | List Lambda functions, optionally filtered by runtime |
-| `aws_invoke_lambda` | Invoke a Lambda function synchronously |
+| `aws_list_lambda_functions` | List Lambda functions |
+| `aws_invoke_lambda` | Invoke a Lambda synchronously |
 
 #### RDS
 
 | Tool | Description |
 |---|---|
-| `aws_list_rds_instances` | List RDS DB instances |
-| `aws_rds_create_instance` | Create a new RDS DB instance |
-| `aws_rds_create_snapshot` | Create a snapshot of an RDS instance |
-| `aws_rds_restore_from_snapshot` | Restore an RDS instance from a snapshot |
+| `aws_list_rds_instances` | List RDS instances |
+| `aws_rds_create_instance` | Create an RDS instance |
+| `aws_rds_create_snapshot` | Create a snapshot |
+| `aws_rds_restore_from_snapshot` | Restore from snapshot |
 
 #### CloudWatch
 
 | Tool | Description |
 |---|---|
-| `aws_cloudwatch_get_metrics` | Retrieve CloudWatch metric statistics |
-| `aws_cloudwatch_list_alarms` | List CloudWatch alarms with optional state filter |
-| `aws_cloudwatch_list_log_groups` | List CloudWatch Log Groups |
-| `aws_cloudwatch_query_logs` | Run a CloudWatch Logs Insights query |
+| `aws_cloudwatch_get_metrics` | Get metric statistics |
+| `aws_cloudwatch_list_alarms` | List alarms |
+| `aws_cloudwatch_list_log_groups` | List log groups |
+| `aws_cloudwatch_query_logs` | Run a Logs Insights query |
 
 #### Secrets Manager & SSM
 
 | Tool | Description |
 |---|---|
-| `aws_secrets_get` | Retrieve a secret value from Secrets Manager |
-| `aws_secrets_create` | Create a new secret in Secrets Manager |
-| `aws_ssm_get_parameter` | Get a parameter from SSM Parameter Store |
-| `aws_ssm_put_parameter` | Put/update a parameter in SSM Parameter Store |
+| `aws_secrets_get` | Get a secret value |
+| `aws_secrets_create` | Create a secret |
+| `aws_ssm_get_parameter` | Get an SSM parameter |
+| `aws_ssm_put_parameter` | Put an SSM parameter |
 
 #### Networking
 
 | Tool | Description |
 |---|---|
-| `aws_list_vpcs` | List VPCs in the region |
-| `aws_list_security_groups` | List EC2 security groups |
+| `aws_list_vpcs` | List VPCs |
+| `aws_list_security_groups` | List security groups |
 | `aws_list_route53_zones` | List Route 53 hosted zones |
 
 #### IAM
 
 | Tool | Description |
 |---|---|
-| `aws_iam_list_roles` | List IAM roles with optional path prefix filter |
-| `aws_iam_list_policies` | List IAM customer-managed policies |
-| `aws_iam_simulate_policy` | Simulate IAM policy evaluation for an action/resource |
+| `aws_iam_list_roles` | List IAM roles |
+| `aws_iam_list_policies` | List customer-managed policies |
+| `aws_iam_simulate_policy` | Simulate policy evaluation |
 
 #### ECS
 
 | Tool | Description |
 |---|---|
 | `aws_ecs_list_clusters` | List ECS clusters |
-| `aws_ecs_list_services` | List services in an ECS cluster |
-| `aws_ecs_list_tasks` | List running tasks in an ECS cluster |
-| `aws_ecs_deploy_service` | Force a new deployment of an ECS service |
+| `aws_ecs_list_services` | List services in a cluster |
+| `aws_ecs_list_tasks` | List running tasks |
+| `aws_ecs_deploy_service` | Force a new deployment |
 
 #### ECR
 
 | Tool | Description |
 |---|---|
 | `aws_ecr_list_repositories` | List ECR repositories |
-| `aws_ecr_list_images` | List images in an ECR repository |
+| `aws_ecr_list_images` | List images in a repository |
 
-#### ALB / Load Balancing
+#### ALB
 
 | Tool | Description |
 |---|---|
-| `aws_alb_list` | List Application/Network Load Balancers |
-| `aws_alb_list_target_groups` | List ALB target groups |
+| `aws_alb_list` | List load balancers |
+| `aws_alb_list_target_groups` | List target groups |
+
+#### SQS
+
+| Tool | Description |
+|---|---|
+| `aws_sqs_list_queues` | List SQS queues |
+| `aws_sqs_send_message` | Send a message to a queue |
+| `aws_sqs_get_queue_attributes` | Get queue depth and attributes |
+| `aws_sqs_purge_queue` | Purge all messages (destructive) |
+
+#### SNS
+
+| Tool | Description |
+|---|---|
+| `aws_sns_list_topics` | List SNS topics |
+| `aws_sns_publish` | Publish a message to a topic |
+| `aws_sns_list_subscriptions` | List subscriptions |
+
+#### DynamoDB
+
+| Tool | Description |
+|---|---|
+| `aws_dynamodb_list_tables` | List DynamoDB tables |
+| `aws_dynamodb_describe_table` | Describe a table |
+| `aws_dynamodb_get_item` | Get an item by primary key |
+| `aws_dynamodb_put_item` | Create or replace an item |
 
 #### Cost Explorer
 
 | Tool | Description |
 |---|---|
-| `aws_cost_by_service` | Get AWS cost breakdown by service for a date range |
-| `aws_cost_monthly_total` | Get total monthly AWS spend |
+| `aws_cost_by_service` | Get cost breakdown by service |
+| `aws_cost_monthly_total` | Get total monthly spend |
 
 **Required env:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`
 
@@ -526,49 +660,27 @@ docker-compose up
 
 ### Kubernetes Tools
 
-#### Workloads
-
 | Tool | Description |
 |---|---|
-| `kubernetes_deploy` | Deploy or update a deployment with a new image |
-| `kubernetes_get_pods` | List pods in a namespace |
-| `kubernetes_get_logs` | Get logs from a pod container |
-| `kubernetes_get_events` | Get events for a namespace |
-| `kubernetes_scale` | Scale a deployment to N replicas |
-| `kubernetes_rollout_restart` | Trigger a rolling restart of a deployment |
-| `kubernetes_rollout_status` | Check the rollout status of a deployment |
-| `kubernetes_get_deployments` | List deployments in a namespace |
-| `kubernetes_delete_pod` | Delete a pod (triggers restart) |
-
-#### Services & Networking
-
-| Tool | Description |
-|---|---|
-| `kubernetes_get_services` | List services in a namespace |
-| `kubernetes_list_ingresses` | List Ingress resources in a namespace |
-
-#### Cluster
-
-| Tool | Description |
-|---|---|
-| `kubernetes_get_nodes` | List cluster nodes with status and capacity |
-| `kubernetes_list_namespaces` | List all namespaces |
-| `kubernetes_create_namespace` | Create a new namespace |
-
-#### Config & Secrets
-
-| Tool | Description |
-|---|---|
-| `kubernetes_get_configmap` | Get a ConfigMap and its data |
+| `k8s_deploy` | Deploy or update a deployment image |
+| `k8s_get_pods` | List pods in a namespace |
+| `k8s_get_logs` | Get pod container logs |
+| `k8s_get_events` | Get namespace events |
+| `k8s_scale` | Scale a deployment |
+| `k8s_rollout_restart` | Rolling restart a deployment |
+| `k8s_rollout_status` | Check rollout status |
+| `k8s_get_deployments` | List deployments |
+| `k8s_get_services` | List services |
+| `k8s_get_nodes` | List cluster nodes |
+| `k8s_delete_pod` | Delete a pod |
+| `kubernetes_list_namespaces` | List namespaces |
+| `kubernetes_create_namespace` | Create a namespace |
+| `kubernetes_get_configmap` | Get a ConfigMap |
 | `kubernetes_apply_configmap` | Create or update a ConfigMap |
-| `kubernetes_list_secrets` | List secret names in a namespace (keys only, not values) |
-
-#### Batch
-
-| Tool | Description |
-|---|---|
-| `kubernetes_list_jobs` | List Jobs in a namespace |
-| `kubernetes_list_cronjobs` | List CronJobs in a namespace |
+| `kubernetes_list_secrets` | List secret names (keys only) |
+| `kubernetes_list_jobs` | List Jobs |
+| `kubernetes_list_cronjobs` | List CronJobs |
+| `kubernetes_list_ingresses` | List Ingress resources |
 
 **Required env:** `KUBECONFIG`
 
@@ -578,13 +690,13 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `helm_list` | List Helm releases in a namespace |
-| `helm_install` | Install a Helm chart as a named release |
-| `helm_upgrade` | Upgrade an existing Helm release |
-| `helm_rollback` | Roll back a release to a previous revision |
-| `helm_status` | Get the status of a Helm release |
+| `helm_list` | List Helm releases |
+| `helm_install` | Install a chart |
+| `helm_upgrade` | Upgrade a release |
+| `helm_rollback` | Roll back to a previous revision |
+| `helm_status` | Get release status |
 
-**Required env:** `HELM_BINARY` (defaults to `helm` on PATH), `KUBECONFIG`
+**Required env:** `HELM_BINARY`, `KUBECONFIG`
 
 ---
 
@@ -592,14 +704,14 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `azure_list_resource_groups` | List all resource groups in the subscription |
+| `azure_list_resource_groups` | List resource groups |
 | `azure_list_vms` | List VMs in a resource group |
-| `azure_start_vm` | Start an Azure virtual machine |
-| `azure_stop_vm` | Deallocate (stop) an Azure virtual machine |
-| `azure_list_aks_clusters` | List AKS clusters in a resource group |
-| `azure_list_acr_registries` | List Azure Container Registries in a resource group |
-| `azure_keyvault_get_secret` | Get a secret from Azure Key Vault |
-| `azure_keyvault_set_secret` | Set a secret in Azure Key Vault |
+| `azure_start_vm` | Start a VM |
+| `azure_stop_vm` | Deallocate a VM |
+| `azure_aks_list_clusters` | List AKS clusters |
+| `azure_list_acr_registries` | List container registries |
+| `azure_keyvault_get_secret` | Get a Key Vault secret |
+| `azure_keyvault_set_secret` | Set a Key Vault secret |
 
 **Required env:** `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
 
@@ -609,13 +721,13 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `gcp_list_compute_instances` | List Compute Engine instances in a zone |
-| `gcp_list_storage_buckets` | List Cloud Storage buckets in the project |
-| `gcp_list_gke_clusters` | List GKE clusters in a region |
-| `gcp_list_cloud_run_services` | List Cloud Run services in a region |
-| `gcp_list_cloud_sql_instances` | List Cloud SQL instances in the project |
-| `gcp_list_cloud_builds` | List recent Cloud Build builds |
-| `gcp_trigger_cloud_build` | Trigger a Cloud Build via a trigger ID |
+| `gcp_list_instances` | List Compute Engine instances |
+| `gcp_list_buckets` | List Cloud Storage buckets |
+| `gcp_list_gke_clusters` | List GKE clusters |
+| `gcp_cloudrun_list_services` | List Cloud Run services |
+| `gcp_cloudsql_list_instances` | List Cloud SQL instances |
+| `gcp_cloudbuild_list_builds` | List recent Cloud Build builds |
+| `gcp_cloudbuild_trigger` | Trigger a Cloud Build |
 
 **Required env:** `GCP_PROJECT_ID`, `GOOGLE_APPLICATION_CREDENTIALS`
 
@@ -625,10 +737,10 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `argocd_list_apps` | List all ArgoCD applications with sync status |
-| `argocd_get_app` | Get detailed status for a single application |
-| `argocd_sync_app` | Trigger a sync for an ArgoCD application |
-| `argocd_rollback_app` | Roll back an application to a previous revision |
+| `argocd_list_apps` | List applications with sync status |
+| `argocd_get_app` | Get detailed app status |
+| `argocd_sync_app` | Trigger a sync |
+| `argocd_rollback_app` | Roll back to a previous revision |
 
 **Required env:** `ARGOCD_SERVER_URL`, `ARGOCD_AUTH_TOKEN`
 
@@ -638,9 +750,9 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `vault_read_secret` | Read a secret from the KV v2 store |
-| `vault_write_secret` | Write key-value data to the KV v2 store |
-| `vault_list_secrets` | List secret keys at a path in the KV v2 store |
+| `vault_read_secret` | Read a KV v2 secret |
+| `vault_write_secret` | Write to KV v2 |
+| `vault_list_secrets` | List keys at a path |
 
 **Required env:** `VAULT_ADDR`, `VAULT_TOKEN`
 
@@ -650,12 +762,124 @@ docker-compose up
 
 | Tool | Description |
 |---|---|
-| `pagerduty_list_incidents` | List incidents, optionally filtered by status |
-| `pagerduty_acknowledge_incident` | Acknowledge an incident by ID |
-| `pagerduty_resolve_incident` | Resolve an incident by ID |
-| `pagerduty_create_incident` | Create a new incident for a service |
+| `pagerduty_list_incidents` | List incidents by status |
+| `pagerduty_acknowledge_incident` | Acknowledge an incident |
+| `pagerduty_resolve_incident` | Resolve an incident |
+| `pagerduty_create_incident` | Create a new incident |
 
-**Required env:** `PAGERDUTY_API_KEY`, `PAGERDUTY_EMAIL` (for create)
+**Required env:** `PAGERDUTY_API_KEY`, `PAGERDUTY_EMAIL`
+
+---
+
+### Datadog Tools
+
+| Tool | Description |
+|---|---|
+| `datadog_list_monitors` | List monitors with current status |
+| `datadog_mute_monitor` | Mute a monitor |
+| `datadog_unmute_monitor` | Unmute a monitor |
+| `datadog_query_metrics` | Query time-series metrics |
+| `datadog_list_events` | List events from the event stream |
+| `datadog_create_event` | Post a custom event (deployments, etc.) |
+| `datadog_list_dashboards` | List dashboards |
+| `datadog_list_incidents` | List active incidents |
+| `datadog_list_hosts` | List reporting hosts |
+
+**Required env:** `DATADOG_API_KEY`, `DATADOG_APP_KEY`
+
+---
+
+### Docker Tools
+
+| Tool | Description |
+|---|---|
+| `docker_list_images` | List local Docker images |
+| `docker_pull` | Pull an image from a registry |
+| `docker_build` | Build an image from a Dockerfile |
+| `docker_push` | Push an image to a registry |
+| `docker_inspect` | Inspect image metadata |
+| `docker_list_containers` | List running (or all) containers |
+| `docker_logs` | Get container log output |
+| `docker_tag` | Tag an image with a new name |
+
+**Required:** `docker` binary on PATH
+
+---
+
+### Jenkins Tools
+
+| Tool | Description |
+|---|---|
+| `jenkins_list_jobs` | List all jobs with status |
+| `jenkins_get_job` | Get job details and build history |
+| `jenkins_trigger_build` | Trigger a build (with optional params) |
+| `jenkins_get_build` | Get build result and duration |
+| `jenkins_get_build_log` | Get console output for a build |
+| `jenkins_list_builds` | List recent builds for a job |
+
+**Required env:** `JENKINS_URL`, `JENKINS_USER`, `JENKINS_TOKEN`
+
+---
+
+### Cloudflare Tools
+
+| Tool | Description |
+|---|---|
+| `cloudflare_list_zones` | List zones (domains) |
+| `cloudflare_list_dns_records` | List DNS records in a zone |
+| `cloudflare_create_dns_record` | Create a DNS record |
+| `cloudflare_delete_dns_record` | Delete a DNS record |
+| `cloudflare_purge_cache` | Purge zone cache (all or specific URLs) |
+| `cloudflare_list_waf_rules` | List WAF firewall rules |
+
+**Required env:** `CLOUDFLARE_API_TOKEN`
+
+---
+
+### Ansible Tools
+
+| Tool | Description |
+|---|---|
+| `ansible_run_playbook` | Run an Ansible playbook |
+| `ansible_list_hosts` | List hosts matching a pattern |
+| `ansible_ping` | Ping hosts to verify connectivity |
+| `ansible_run_module` | Run an ad-hoc Ansible module |
+
+**Required:** `ansible` and `ansible-playbook` binaries on PATH
+
+---
+
+### Security Scanning Tools
+
+| Tool | Description |
+|---|---|
+| `trivy_scan_image` | Scan a Docker image for CVEs |
+| `trivy_scan_filesystem` | Scan a directory for dependency vulnerabilities |
+| `tfsec_scan` | Scan Terraform code for misconfigurations |
+
+**Required:** `trivy` and `tfsec` binaries on PATH
+
+---
+
+### GCP Secret Manager Tools
+
+| Tool | Description |
+|---|---|
+| `gcp_secret_manager_list` | List secrets (names only) |
+| `gcp_secret_manager_get` | Get a secret value by ID |
+| `gcp_secret_manager_create` | Create a new secret |
+
+**Required env:** `GCP_PROJECT_ID`, `GOOGLE_APPLICATION_CREDENTIALS`
+
+---
+
+### Multi-cloud FinOps Tools
+
+| Tool | Description |
+|---|---|
+| `azure_cost_by_service` | Azure spend breakdown by service |
+| `gcp_billing_monthly_spend` | GCP monthly spend via BigQuery billing export |
+| `infracost_estimate` | Estimate Terraform plan cost with Infracost |
 
 ---
 
@@ -664,101 +888,130 @@ docker-compose up
 | Service | Tools | Tags |
 |---|---|---|
 | Terraform | 7 | `terraform`, `iac` |
-| GitHub | 8 | `github`, `scm`, `ci` |
+| GitHub | 8 | `github`, `scm` |
+| GitLab | 7 | `gitlab`, `scm`, `ci` |
 | AWS EC2 | 5 | `aws`, `ec2`, `compute` |
 | AWS S3 | 4 | `aws`, `s3`, `storage` |
 | AWS Lambda | 2 | `aws`, `lambda`, `serverless` |
 | AWS RDS | 4 | `aws`, `rds`, `database` |
 | AWS CloudWatch | 4 | `aws`, `cloudwatch`, `observability` |
 | AWS Secrets/SSM | 4 | `aws`, `secrets`, `ssm` |
-| AWS Networking | 3 | `aws`, `networking`, `vpc` |
+| AWS Networking | 3 | `aws`, `networking` |
 | AWS IAM | 3 | `aws`, `iam`, `security` |
 | AWS ECS | 4 | `aws`, `ecs`, `compute` |
 | AWS ECR | 2 | `aws`, `ecr`, `containers` |
 | AWS ALB | 2 | `aws`, `networking`, `alb` |
+| AWS SQS | 4 | `aws`, `sqs`, `messaging` |
+| AWS SNS | 3 | `aws`, `sns`, `messaging` |
+| AWS DynamoDB | 4 | `aws`, `dynamodb`, `database` |
 | AWS Cost Explorer | 2 | `aws`, `cost`, `finops` |
 | Kubernetes | 19 | `kubernetes`, `k8s` |
 | Helm | 5 | `helm`, `kubernetes` |
 | Azure | 8 | `azure`, `multicloud` |
 | GCP | 7 | `gcp`, `multicloud` |
+| GCP Secret Manager | 3 | `gcp`, `secrets` |
 | ArgoCD | 4 | `argocd`, `gitops` |
 | HashiCorp Vault | 3 | `vault`, `secrets` |
 | PagerDuty | 4 | `pagerduty`, `incident` |
-| **Total** | **103** | |
+| Datadog | 9 | `datadog`, `observability` |
+| Docker | 8 | `docker`, `containers` |
+| Jenkins | 6 | `jenkins`, `ci` |
+| Cloudflare | 6 | `cloudflare`, `dns` |
+| Ansible | 4 | `ansible`, `automation` |
+| Security Scanning | 3 | `security`, `trivy`, `tfsec` |
+| Multi-cloud FinOps | 3 | `finops`, `cost` |
+| **Total** | **160** | |
 
 ---
 
 ## Example Workflows
 
-### Incident response workflow
+### Incident response (full end-to-end)
 
 ```python
-# 1. Detect incident
+# 1. Get alerted
 incidents = execute_tool("pagerduty_list_incidents", {"status": "triggered"})
-
-# 2. Acknowledge it
 execute_tool("pagerduty_acknowledge_incident", {"incident_id": "P1234AB"})
 
-# 3. Check CloudWatch alarms
-execute_tool("aws_cloudwatch_list_alarms", {"state_value": "ALARM"})
+# 2. Check Datadog — what's firing?
+execute_tool("datadog_list_monitors", {"status": "Alert"})
+execute_tool("datadog_query_metrics", {"query": "avg:system.cpu.user{env:prod}", "minutes": 30})
 
-# 4. Pull recent logs
+# 3. Pull CloudWatch logs
 execute_tool("aws_cloudwatch_query_logs", {
-    "log_group": "/aws/lambda/api",
-    "query": "fields @timestamp, @message | filter @message like /ERROR/ | limit 20",
-    "minutes": 30
+    "log_group": "/aws/ecs/api",
+    "query": "fields @message | filter @message like /ERROR/ | limit 20",
+    "minutes": 15
 })
 
-# 5. Restart the affected pod
-execute_tool("kubernetes_rollout_restart", {"deployment": "api", "namespace": "production"})
+# 4. Check K8s pods
+execute_tool("k8s_get_pods", {"namespace": "production"})
 
-# 6. Resolve after fix
+# 5. Rolling restart to clear bad state
+execute_tool("k8s_rollout_restart", {"deployment": "api", "namespace": "production"})
+
+# 6. Mark deployment event in Datadog
+execute_tool("datadog_create_event", {
+    "title": "Rollout restart — api", "text": "Auto-restarted by AI agent",
+    "tags": ["env:prod", "service:api"]
+})
+
+# 7. Resolve
 execute_tool("pagerduty_resolve_incident", {"incident_id": "P1234AB"})
 ```
 
-### Multi-cloud deployment workflow
+### Full CI/CD release pipeline
 
 ```python
-# Deploy to AWS ECS
-execute_tool("aws_ecs_deploy_service", {
-    "cluster": "production",
-    "service": "api",
-    "force_new_deployment": True
-})
+# 1. Trigger Jenkins build
+execute_tool("jenkins_trigger_build", {"job_name": "api-build", "params": {"VERSION": "v2.1.0"}})
 
-# Upgrade Azure AKS workload via Helm
-execute_tool("helm_upgrade", {
-    "release": "api",
-    "chart": "myrepo/api",
-    "namespace": "production",
-    "values": {"image.tag": "v2.1.0"}
-})
+# 2. Watch build log
+execute_tool("jenkins_get_build_log", {"job_name": "api-build", "build_number": 42})
 
-# Sync GCP Cloud Run via ArgoCD
-execute_tool("argocd_sync_app", {"app_name": "cloud-run-api"})
-```
+# 3. Scan image for CVEs before shipping
+execute_tool("trivy_scan_image", {"image": "myrepo/api:v2.1.0", "severity": "HIGH,CRITICAL"})
 
-### GitOps release workflow
+# 4. Push to ECR
+execute_tool("docker_push", {"image": "123456789.dkr.ecr.us-east-1.amazonaws.com/api:v2.1.0"})
 
-```python
-# 1. Create a GitHub release
-execute_tool("github_create_release", {
-    "owner": "my-org", "repo": "api",
-    "tag": "v2.1.0", "name": "v2.1.0",
-    "body": "Release notes..."
-})
-
-# 2. Trigger CI workflow
-execute_tool("github_trigger_workflow", {
-    "owner": "my-org", "repo": "api",
-    "workflow_id": "deploy.yml", "ref": "main"
-})
-
-# 3. Apply Terraform for infra changes
+# 5. Scan Terraform before apply
+execute_tool("tfsec_scan", {"path": "/infra/prod"})
+execute_tool("infracost_estimate", {"path": "/infra/prod"})
 execute_tool("terraform_apply", {"working_dir": "/infra/prod"})
 
-# 4. Sync ArgoCD
+# 6. Deploy via Helm
+execute_tool("helm_upgrade", {
+    "release": "api", "chart": "myrepo/api",
+    "namespace": "production", "values": {"image.tag": "v2.1.0"}
+})
+
+# 7. Sync ArgoCD
 execute_tool("argocd_sync_app", {"app_name": "api-production"})
+
+# 8. Create GitHub release
+execute_tool("github_create_release", {
+    "owner": "my-org", "repo": "api", "tag": "v2.1.0", "name": "v2.1.0"
+})
+
+# 9. Purge Cloudflare cache
+execute_tool("cloudflare_purge_cache", {"zone_id": "abc123"})
+```
+
+### Multi-cloud cost review
+
+```python
+# AWS
+execute_tool("aws_cost_by_service", {"start_date": "2026-04-01", "end_date": "2026-04-22"})
+
+# Azure
+execute_tool("azure_cost_by_service", {"start_date": "2026-04-01", "end_date": "2026-04-22"})
+
+# GCP
+execute_tool("gcp_billing_monthly_spend", {"dataset": "billing", "table": "gcp_billing_export_v1_XXXX"})
+
+# Estimate next Terraform change
+execute_tool("infracost_estimate", {"path": "/infra/aws"})
 ```
 
 ---
@@ -780,7 +1033,6 @@ TOOL_INPUT_SCHEMA = {
 }
 
 def handler(param: str):
-    # call your integration
     return {"result": param}
 ```
 
@@ -798,7 +1050,7 @@ registry.register(ToolEntry(
 ))
 ```
 
-That's it. No other files need to change.
+No other files need to change.
 
 ---
 
@@ -807,33 +1059,32 @@ That's it. No other files need to change.
 ```bash
 pip install pytest pytest-asyncio pytest-mock
 pytest tests/ -v
+# 152 tests, all pass
 ```
 
 ---
 
 ## Security Model
 
-- **API key auth**: Set `MCP_API_KEY` to require `Authorization: Bearer <key>` or `X-API-Key: <key>` on all requests. Leave unset for dev/local.
-- **Terraform sandboxing**: All Terraform working directories are validated to reside under `TERRAFORM_ALLOWED_BASE_DIR`. Path traversal is blocked.
-- **Helm sandboxing**: Helm binary path is configurable; no shell=True is used.
-- **K8s secrets**: `kubernetes_list_secrets` returns key names only — secret values are never returned.
-- **Vault**: Read and write operations use token-based auth. Namespace and mount are configurable.
-- **Audit log**: Every tool execution (name, inputs hash, status, duration) is logged to SQLite.
-- **DRY_RUN mode**: Set `DRY_RUN=true` to block all mutating operations without changing application code.
-- **CORS**: Set `CORS_ORIGINS` to explicit origins in production. Avoid `*` outside local dev.
-- **Destructive tag**: Tools tagged `destructive` (terminate EC2, Terraform destroy) are clearly labelled. Wire additional confirmation logic in your agent if needed.
+- **API key auth**: Set `MCP_API_KEY` — all requests require `Authorization: Bearer <key>` or `X-API-Key: <key>`.
+- **Terraform sandboxing**: All paths validated against `TERRAFORM_ALLOWED_BASE_DIR`. Path traversal blocked.
+- **No shell=True**: All subprocess calls (Terraform, Helm, Docker, Ansible, Trivy, tfsec, Infracost) use argument lists.
+- **K8s secrets**: `kubernetes_list_secrets` returns key names only — values never returned.
+- **Audit log**: Every tool execution is logged to SQLite (name, inputs hash, status, duration).
+- **DRY_RUN mode**: Set `DRY_RUN=true` to block all mutating operations.
+- **Destructive tag**: Tools tagged `destructive` are clearly labelled — add confirmation logic in your agent if needed.
+- **CORS**: Set `CORS_ORIGINS` to explicit origins in production.
 
 ---
 
 ## Troubleshooting
 
-### "Tool not found"
+### Check how many tools are registered
 
 ```bash
-curl http://localhost:8000/tools | python -m json.tool | grep '"name"'
+curl http://localhost:8000/tools | python -m json.tool | grep '"count"'
+# Should be 160
 ```
-
-Verify the tool name matches exactly (case-sensitive).
 
 ### AWS authentication errors
 
@@ -841,45 +1092,39 @@ Verify the tool name matches exactly (case-sensitive).
 aws sts get-caller-identity
 ```
 
-Confirm your credentials are valid. The server uses the same credential chain as the AWS CLI (env vars → instance profile → ~/.aws/credentials).
-
 ### Kubernetes connection refused
 
 ```bash
 kubectl cluster-info
 ```
 
-Confirm `KUBECONFIG` is set and the cluster is reachable.
-
 ### Azure authentication errors
 
-Verify all four Azure env vars are set: `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`. The server uses `DefaultAzureCredential`.
+Verify all four env vars: `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`.
 
-### GCP authentication errors
+### Datadog 403 errors
+
+Confirm both `DATADOG_API_KEY` and `DATADOG_APP_KEY` are set — the app key is required for read operations.
+
+### Jenkins 401 errors
+
+Use an API token, not your password. Generate one at `<jenkins-url>/user/<username>/configure`.
+
+### Cloudflare API errors
+
+Ensure your API token has the correct permissions for the zone (DNS Edit, Cache Purge, Firewall Rules Read).
+
+### Docker / Ansible / Trivy / tfsec not found
+
+These use CLI subprocess calls. Ensure the binary is installed and on your `PATH`:
 
 ```bash
-gcloud auth application-default print-access-token
-```
-
-Or set `GOOGLE_APPLICATION_CREDENTIALS` to the path of a service account JSON key.
-
-### ArgoCD / Vault / PagerDuty connection errors
-
-These use plain HTTP (httpx). Confirm the server URL is reachable and the auth token is valid:
-
-```bash
-curl -H "Authorization: Bearer $ARGOCD_AUTH_TOKEN" $ARGOCD_SERVER_URL/api/v1/applications
-curl -H "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/sys/health
-curl -H "Authorization: Token token=$PAGERDUTY_API_KEY" https://api.pagerduty.com/incidents
+which docker ansible trivy tfsec infracost helm terraform
 ```
 
 ### Terraform timeout
 
-Increase `TERRAFORM_TIMEOUT_SECONDS` (default 600). Long `apply` runs against large state files may need 900–1800s.
-
-### Helm timeout
-
-Increase `HELM_TIMEOUT_SECONDS` (default 300). Complex chart installs with many resources may take longer.
+Increase `TERRAFORM_TIMEOUT_SECONDS` (default 600). Large state files may need 900–1800s.
 
 ---
 
