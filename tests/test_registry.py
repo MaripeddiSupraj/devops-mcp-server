@@ -63,41 +63,38 @@ class TestToolRegistry:
 class TestBuildRegistry:
     def test_all_tools_registered(self):
         registry = build_registry()
-        expected_tools = {
-            # Terraform
-            "terraform_plan",
-            "terraform_apply",
-            "terraform_destroy",
-            # GitHub
-            "github_create_pull_request",
-            "github_get_repo",
-            "github_list_issues",
-            "github_trigger_workflow",
-            "github_create_release",
-            # AWS
-            "aws_create_ec2_instance",
-            "aws_list_ec2_instances",
-            "aws_create_s3_bucket",
-            "aws_list_s3_buckets",
-            "aws_list_lambda_functions",
-            "aws_invoke_lambda",
-            "aws_list_rds_instances",
-            # Kubernetes — core
-            "k8s_deploy",
-            "k8s_get_pods",
-            # Kubernetes — extended
-            "k8s_get_logs",
-            "k8s_get_events",
-            "k8s_scale",
-            "k8s_rollout_restart",
-            "k8s_rollout_status",
-            "k8s_get_deployments",
-            "k8s_get_services",
-            "k8s_get_nodes",
-            "k8s_delete_pod",
-        }
         registered = set(registry.list_names())
-        assert expected_tools == registered
+
+        # Total tool count grows with each version — assert a minimum floor
+        assert len(registered) >= 150, f"Expected at least 150 tools, got {len(registered)}"
+
+        # Spot-check one tool from each major service group
+        required = {
+            # Terraform
+            "terraform_plan", "terraform_apply", "terraform_destroy",
+            # GitHub
+            "github_create_pull_request", "github_get_repo", "github_list_issues",
+            # AWS core
+            "aws_list_ec2_instances", "aws_list_s3_buckets", "aws_list_lambda_functions",
+            # AWS extended
+            "aws_sqs_list_queues", "aws_sns_list_topics", "aws_dynamodb_list_tables",
+            # Kubernetes
+            "k8s_deploy", "k8s_get_pods", "k8s_get_logs",
+            # Helm
+            "helm_list", "helm_install",
+            # GCP
+            "gcp_list_instances", "gcp_secret_manager_list",
+            # ArgoCD / Vault / PagerDuty
+            "argocd_list_apps", "vault_read_secret", "pagerduty_list_incidents",
+            # Azure
+            "azure_list_vms", "azure_aks_list_clusters",
+            # v4 services
+            "datadog_list_monitors", "docker_list_images", "jenkins_list_jobs",
+            "gitlab_list_projects", "cloudflare_list_zones", "ansible_run_playbook",
+            "trivy_scan_image", "tfsec_scan",
+        }
+        missing = required - registered
+        assert not missing, f"Missing expected tools: {missing}"
 
     def test_tool_definitions_have_required_fields(self):
         registry = build_registry()

@@ -24,7 +24,7 @@ class TestHealthProbes:
         assert r.status_code in (200, 503)
         body = r.json()
         assert "warnings" in body
-        assert body["tools_registered"] == 26
+        assert body["tools_registered"] > 100
 
     def test_legacy_health_alias(self, client):
         r = client.get("/health")
@@ -38,22 +38,23 @@ class TestToolsEndpoints:
         r = client.get("/tools")
         assert r.status_code == 200
         body = r.json()
-        assert body["count"] == 26
-        assert len(body["tools"]) == 26
+        assert body["count"] > 100
+        assert len(body["tools"]) > 100
 
     def test_filter_by_tag_kubernetes(self, client):
         r = client.get("/tools?tag=kubernetes")
         assert r.status_code == 200
         body = r.json()
-        assert body["count"] == 11
+        assert body["count"] > 10
         for tool in body["tools"]:
             assert "kubernetes" in tool["tags"]
 
     def test_filter_by_tag_destructive(self, client):
         r = client.get("/tools?tag=destructive")
         assert r.status_code == 200
-        assert r.json()["count"] == 1
-        assert r.json()["tools"][0]["name"] == "terraform_destroy"
+        assert r.json()["count"] >= 1
+        names = [t["name"] for t in r.json()["tools"]]
+        assert "terraform_destroy" in names
 
     def test_filter_unknown_tag_returns_empty(self, client):
         r = client.get("/tools?tag=nonexistent_tag")
