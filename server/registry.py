@@ -130,6 +130,7 @@ def build_registry() -> ToolRegistry:
     from tools.aws import (
         ec2, s3, lambda_tools, rds, ec2_lifecycle, s3_objects, cloudwatch,
         secrets, networking, iam, rds_crud, ecs, cost, ecr, alb,
+        sqs, sns, dynamodb,
     )
     from tools.kubernetes import (
         deploy, get_pods, get_logs, get_events, scale, rollout_restart,
@@ -139,9 +140,18 @@ def build_registry() -> ToolRegistry:
     from tools.helm import helm_tools
     from tools.azure import azure_tools
     from tools.gcp import gcp_tools
+    from tools.gcp import secret_manager_tools as gcp_sm_tools
     from tools.argocd import argocd_tools
     from tools.vault import vault_tools
     from tools.pagerduty import pagerduty_tools
+    from tools.datadog import datadog_tools
+    from tools.docker import docker_tools
+    from tools.jenkins import jenkins_tools
+    from tools.gitlab import gitlab_tools
+    from tools.cloudflare import cloudflare_tools
+    from tools.ansible import ansible_tools
+    from tools.security import scanner_tools
+    from tools.finops import finops_tools
 
     registry = ToolRegistry()
 
@@ -652,6 +662,90 @@ def build_registry() -> ToolRegistry:
     registry.register(ToolEntry(name=pagerduty_tools.ACK_TOOL_NAME, description=pagerduty_tools.ACK_TOOL_DESCRIPTION, input_schema=pagerduty_tools.ACK_TOOL_INPUT_SCHEMA, handler=pagerduty_tools.ack_handler, tags=["pagerduty", "incident", "oncall"]))
     registry.register(ToolEntry(name=pagerduty_tools.RESOLVE_TOOL_NAME, description=pagerduty_tools.RESOLVE_TOOL_DESCRIPTION, input_schema=pagerduty_tools.RESOLVE_TOOL_INPUT_SCHEMA, handler=pagerduty_tools.resolve_handler, tags=["pagerduty", "incident", "oncall"]))
     registry.register(ToolEntry(name=pagerduty_tools.CREATE_TOOL_NAME, description=pagerduty_tools.CREATE_TOOL_DESCRIPTION, input_schema=pagerduty_tools.CREATE_TOOL_INPUT_SCHEMA, handler=pagerduty_tools.create_handler, tags=["pagerduty", "incident", "oncall"]))
+
+    # ── AWS SQS ────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=sqs.LIST_QUEUES_TOOL_NAME, description=sqs.LIST_QUEUES_TOOL_DESCRIPTION, input_schema=sqs.LIST_QUEUES_TOOL_INPUT_SCHEMA, handler=sqs.list_queues_handler, tags=["aws", "sqs", "messaging"]))
+    registry.register(ToolEntry(name=sqs.SEND_MESSAGE_TOOL_NAME, description=sqs.SEND_MESSAGE_TOOL_DESCRIPTION, input_schema=sqs.SEND_MESSAGE_TOOL_INPUT_SCHEMA, handler=sqs.send_message_handler, tags=["aws", "sqs", "messaging"]))
+    registry.register(ToolEntry(name=sqs.GET_ATTRS_TOOL_NAME, description=sqs.GET_ATTRS_TOOL_DESCRIPTION, input_schema=sqs.GET_ATTRS_TOOL_INPUT_SCHEMA, handler=sqs.get_attrs_handler, tags=["aws", "sqs", "messaging"]))
+    registry.register(ToolEntry(name=sqs.PURGE_QUEUE_TOOL_NAME, description=sqs.PURGE_QUEUE_TOOL_DESCRIPTION, input_schema=sqs.PURGE_QUEUE_TOOL_INPUT_SCHEMA, handler=sqs.purge_queue_handler, tags=["aws", "sqs", "messaging", "destructive"]))
+
+    # ── AWS SNS ────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=sns.LIST_TOPICS_TOOL_NAME, description=sns.LIST_TOPICS_TOOL_DESCRIPTION, input_schema=sns.LIST_TOPICS_TOOL_INPUT_SCHEMA, handler=sns.list_topics_handler, tags=["aws", "sns", "messaging"]))
+    registry.register(ToolEntry(name=sns.PUBLISH_TOOL_NAME, description=sns.PUBLISH_TOOL_DESCRIPTION, input_schema=sns.PUBLISH_TOOL_INPUT_SCHEMA, handler=sns.publish_handler, tags=["aws", "sns", "messaging"]))
+    registry.register(ToolEntry(name=sns.LIST_SUBS_TOOL_NAME, description=sns.LIST_SUBS_TOOL_DESCRIPTION, input_schema=sns.LIST_SUBS_TOOL_INPUT_SCHEMA, handler=sns.list_subs_handler, tags=["aws", "sns", "messaging"]))
+
+    # ── AWS DynamoDB ───────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=dynamodb.LIST_TABLES_TOOL_NAME, description=dynamodb.LIST_TABLES_TOOL_DESCRIPTION, input_schema=dynamodb.LIST_TABLES_TOOL_INPUT_SCHEMA, handler=dynamodb.list_tables_handler, tags=["aws", "dynamodb", "database"]))
+    registry.register(ToolEntry(name=dynamodb.DESCRIBE_TABLE_TOOL_NAME, description=dynamodb.DESCRIBE_TABLE_TOOL_DESCRIPTION, input_schema=dynamodb.DESCRIBE_TABLE_TOOL_INPUT_SCHEMA, handler=dynamodb.describe_table_handler, tags=["aws", "dynamodb", "database"]))
+    registry.register(ToolEntry(name=dynamodb.GET_ITEM_TOOL_NAME, description=dynamodb.GET_ITEM_TOOL_DESCRIPTION, input_schema=dynamodb.GET_ITEM_TOOL_INPUT_SCHEMA, handler=dynamodb.get_item_handler, tags=["aws", "dynamodb", "database"]))
+    registry.register(ToolEntry(name=dynamodb.PUT_ITEM_TOOL_NAME, description=dynamodb.PUT_ITEM_TOOL_DESCRIPTION, input_schema=dynamodb.PUT_ITEM_TOOL_INPUT_SCHEMA, handler=dynamodb.put_item_handler, tags=["aws", "dynamodb", "database"]))
+
+    # ── Datadog ────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=datadog_tools.LIST_MONITORS_TOOL_NAME, description=datadog_tools.LIST_MONITORS_TOOL_DESCRIPTION, input_schema=datadog_tools.LIST_MONITORS_TOOL_INPUT_SCHEMA, handler=datadog_tools.list_monitors_handler, tags=["datadog", "observability", "monitoring"]))
+    registry.register(ToolEntry(name=datadog_tools.MUTE_MONITOR_TOOL_NAME, description=datadog_tools.MUTE_MONITOR_TOOL_DESCRIPTION, input_schema=datadog_tools.MUTE_MONITOR_TOOL_INPUT_SCHEMA, handler=datadog_tools.mute_monitor_handler, tags=["datadog", "observability", "monitoring"]))
+    registry.register(ToolEntry(name=datadog_tools.UNMUTE_MONITOR_TOOL_NAME, description=datadog_tools.UNMUTE_MONITOR_TOOL_DESCRIPTION, input_schema=datadog_tools.UNMUTE_MONITOR_TOOL_INPUT_SCHEMA, handler=datadog_tools.unmute_monitor_handler, tags=["datadog", "observability", "monitoring"]))
+    registry.register(ToolEntry(name=datadog_tools.QUERY_METRICS_TOOL_NAME, description=datadog_tools.QUERY_METRICS_TOOL_DESCRIPTION, input_schema=datadog_tools.QUERY_METRICS_TOOL_INPUT_SCHEMA, handler=datadog_tools.query_metrics_handler, tags=["datadog", "observability", "metrics"]))
+    registry.register(ToolEntry(name=datadog_tools.LIST_EVENTS_TOOL_NAME, description=datadog_tools.LIST_EVENTS_TOOL_DESCRIPTION, input_schema=datadog_tools.LIST_EVENTS_TOOL_INPUT_SCHEMA, handler=datadog_tools.list_events_handler, tags=["datadog", "observability"]))
+    registry.register(ToolEntry(name=datadog_tools.CREATE_EVENT_TOOL_NAME, description=datadog_tools.CREATE_EVENT_TOOL_DESCRIPTION, input_schema=datadog_tools.CREATE_EVENT_TOOL_INPUT_SCHEMA, handler=datadog_tools.create_event_handler, tags=["datadog", "observability"]))
+    registry.register(ToolEntry(name=datadog_tools.LIST_DASHBOARDS_TOOL_NAME, description=datadog_tools.LIST_DASHBOARDS_TOOL_DESCRIPTION, input_schema=datadog_tools.LIST_DASHBOARDS_TOOL_INPUT_SCHEMA, handler=datadog_tools.list_dashboards_handler, tags=["datadog", "observability"]))
+    registry.register(ToolEntry(name=datadog_tools.LIST_INCIDENTS_TOOL_NAME, description=datadog_tools.LIST_INCIDENTS_TOOL_DESCRIPTION, input_schema=datadog_tools.LIST_INCIDENTS_TOOL_INPUT_SCHEMA, handler=datadog_tools.list_incidents_handler, tags=["datadog", "observability", "incident"]))
+    registry.register(ToolEntry(name=datadog_tools.LIST_HOSTS_TOOL_NAME, description=datadog_tools.LIST_HOSTS_TOOL_DESCRIPTION, input_schema=datadog_tools.LIST_HOSTS_TOOL_INPUT_SCHEMA, handler=datadog_tools.list_hosts_handler, tags=["datadog", "observability"]))
+
+    # ── Docker ─────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=docker_tools.LIST_IMAGES_TOOL_NAME, description=docker_tools.LIST_IMAGES_TOOL_DESCRIPTION, input_schema=docker_tools.LIST_IMAGES_TOOL_INPUT_SCHEMA, handler=docker_tools.list_images_handler, tags=["docker", "containers"]))
+    registry.register(ToolEntry(name=docker_tools.PULL_TOOL_NAME, description=docker_tools.PULL_TOOL_DESCRIPTION, input_schema=docker_tools.PULL_TOOL_INPUT_SCHEMA, handler=docker_tools.pull_handler, tags=["docker", "containers"]))
+    registry.register(ToolEntry(name=docker_tools.BUILD_TOOL_NAME, description=docker_tools.BUILD_TOOL_DESCRIPTION, input_schema=docker_tools.BUILD_TOOL_INPUT_SCHEMA, handler=docker_tools.build_handler, tags=["docker", "containers"], timeout_seconds=600))
+    registry.register(ToolEntry(name=docker_tools.PUSH_TOOL_NAME, description=docker_tools.PUSH_TOOL_DESCRIPTION, input_schema=docker_tools.PUSH_TOOL_INPUT_SCHEMA, handler=docker_tools.push_handler, tags=["docker", "containers"]))
+    registry.register(ToolEntry(name=docker_tools.INSPECT_TOOL_NAME, description=docker_tools.INSPECT_TOOL_DESCRIPTION, input_schema=docker_tools.INSPECT_TOOL_INPUT_SCHEMA, handler=docker_tools.inspect_handler, tags=["docker", "containers"]))
+    registry.register(ToolEntry(name=docker_tools.LIST_CONTAINERS_TOOL_NAME, description=docker_tools.LIST_CONTAINERS_TOOL_DESCRIPTION, input_schema=docker_tools.LIST_CONTAINERS_TOOL_INPUT_SCHEMA, handler=docker_tools.list_containers_handler, tags=["docker", "containers"]))
+    registry.register(ToolEntry(name=docker_tools.LOGS_TOOL_NAME, description=docker_tools.LOGS_TOOL_DESCRIPTION, input_schema=docker_tools.LOGS_TOOL_INPUT_SCHEMA, handler=docker_tools.logs_handler, tags=["docker", "containers", "debug"]))
+    registry.register(ToolEntry(name=docker_tools.TAG_TOOL_NAME, description=docker_tools.TAG_TOOL_DESCRIPTION, input_schema=docker_tools.TAG_TOOL_INPUT_SCHEMA, handler=docker_tools.tag_handler, tags=["docker", "containers"]))
+
+    # ── Jenkins ────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=jenkins_tools.LIST_JOBS_TOOL_NAME, description=jenkins_tools.LIST_JOBS_TOOL_DESCRIPTION, input_schema=jenkins_tools.LIST_JOBS_TOOL_INPUT_SCHEMA, handler=jenkins_tools.list_jobs_handler, tags=["jenkins", "ci", "cicd"]))
+    registry.register(ToolEntry(name=jenkins_tools.GET_JOB_TOOL_NAME, description=jenkins_tools.GET_JOB_TOOL_DESCRIPTION, input_schema=jenkins_tools.GET_JOB_TOOL_INPUT_SCHEMA, handler=jenkins_tools.get_job_handler, tags=["jenkins", "ci", "cicd"]))
+    registry.register(ToolEntry(name=jenkins_tools.TRIGGER_BUILD_TOOL_NAME, description=jenkins_tools.TRIGGER_BUILD_TOOL_DESCRIPTION, input_schema=jenkins_tools.TRIGGER_BUILD_TOOL_INPUT_SCHEMA, handler=jenkins_tools.trigger_build_handler, tags=["jenkins", "ci", "cicd"]))
+    registry.register(ToolEntry(name=jenkins_tools.GET_BUILD_TOOL_NAME, description=jenkins_tools.GET_BUILD_TOOL_DESCRIPTION, input_schema=jenkins_tools.GET_BUILD_TOOL_INPUT_SCHEMA, handler=jenkins_tools.get_build_handler, tags=["jenkins", "ci", "cicd"]))
+    registry.register(ToolEntry(name=jenkins_tools.GET_BUILD_LOG_TOOL_NAME, description=jenkins_tools.GET_BUILD_LOG_TOOL_DESCRIPTION, input_schema=jenkins_tools.GET_BUILD_LOG_TOOL_INPUT_SCHEMA, handler=jenkins_tools.get_build_log_handler, tags=["jenkins", "ci", "cicd"]))
+    registry.register(ToolEntry(name=jenkins_tools.LIST_BUILDS_TOOL_NAME, description=jenkins_tools.LIST_BUILDS_TOOL_DESCRIPTION, input_schema=jenkins_tools.LIST_BUILDS_TOOL_INPUT_SCHEMA, handler=jenkins_tools.list_builds_handler, tags=["jenkins", "ci", "cicd"]))
+
+    # ── GitLab ─────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=gitlab_tools.LIST_PROJECTS_TOOL_NAME, description=gitlab_tools.LIST_PROJECTS_TOOL_DESCRIPTION, input_schema=gitlab_tools.LIST_PROJECTS_TOOL_INPUT_SCHEMA, handler=gitlab_tools.list_projects_handler, tags=["gitlab", "scm"]))
+    registry.register(ToolEntry(name=gitlab_tools.LIST_MRS_TOOL_NAME, description=gitlab_tools.LIST_MRS_TOOL_DESCRIPTION, input_schema=gitlab_tools.LIST_MRS_TOOL_INPUT_SCHEMA, handler=gitlab_tools.list_mrs_handler, tags=["gitlab", "scm"]))
+    registry.register(ToolEntry(name=gitlab_tools.CREATE_MR_TOOL_NAME, description=gitlab_tools.CREATE_MR_TOOL_DESCRIPTION, input_schema=gitlab_tools.CREATE_MR_TOOL_INPUT_SCHEMA, handler=gitlab_tools.create_mr_handler, tags=["gitlab", "scm"]))
+    registry.register(ToolEntry(name=gitlab_tools.MERGE_MR_TOOL_NAME, description=gitlab_tools.MERGE_MR_TOOL_DESCRIPTION, input_schema=gitlab_tools.MERGE_MR_TOOL_INPUT_SCHEMA, handler=gitlab_tools.merge_mr_handler, tags=["gitlab", "scm"]))
+    registry.register(ToolEntry(name=gitlab_tools.LIST_PIPELINES_TOOL_NAME, description=gitlab_tools.LIST_PIPELINES_TOOL_DESCRIPTION, input_schema=gitlab_tools.LIST_PIPELINES_TOOL_INPUT_SCHEMA, handler=gitlab_tools.list_pipelines_handler, tags=["gitlab", "ci", "cicd"]))
+    registry.register(ToolEntry(name=gitlab_tools.TRIGGER_PIPELINE_TOOL_NAME, description=gitlab_tools.TRIGGER_PIPELINE_TOOL_DESCRIPTION, input_schema=gitlab_tools.TRIGGER_PIPELINE_TOOL_INPUT_SCHEMA, handler=gitlab_tools.trigger_pipeline_handler, tags=["gitlab", "ci", "cicd"]))
+    registry.register(ToolEntry(name=gitlab_tools.LIST_ISSUES_TOOL_NAME, description=gitlab_tools.LIST_ISSUES_TOOL_DESCRIPTION, input_schema=gitlab_tools.LIST_ISSUES_TOOL_INPUT_SCHEMA, handler=gitlab_tools.list_issues_handler, tags=["gitlab", "scm"]))
+
+    # ── Cloudflare ─────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=cloudflare_tools.LIST_ZONES_TOOL_NAME, description=cloudflare_tools.LIST_ZONES_TOOL_DESCRIPTION, input_schema=cloudflare_tools.LIST_ZONES_TOOL_INPUT_SCHEMA, handler=cloudflare_tools.list_zones_handler, tags=["cloudflare", "dns", "networking"]))
+    registry.register(ToolEntry(name=cloudflare_tools.LIST_DNS_TOOL_NAME, description=cloudflare_tools.LIST_DNS_TOOL_DESCRIPTION, input_schema=cloudflare_tools.LIST_DNS_TOOL_INPUT_SCHEMA, handler=cloudflare_tools.list_dns_handler, tags=["cloudflare", "dns", "networking"]))
+    registry.register(ToolEntry(name=cloudflare_tools.CREATE_DNS_TOOL_NAME, description=cloudflare_tools.CREATE_DNS_TOOL_DESCRIPTION, input_schema=cloudflare_tools.CREATE_DNS_TOOL_INPUT_SCHEMA, handler=cloudflare_tools.create_dns_handler, tags=["cloudflare", "dns", "networking"]))
+    registry.register(ToolEntry(name=cloudflare_tools.DELETE_DNS_TOOL_NAME, description=cloudflare_tools.DELETE_DNS_TOOL_DESCRIPTION, input_schema=cloudflare_tools.DELETE_DNS_TOOL_INPUT_SCHEMA, handler=cloudflare_tools.delete_dns_handler, tags=["cloudflare", "dns", "networking", "destructive"]))
+    registry.register(ToolEntry(name=cloudflare_tools.PURGE_CACHE_TOOL_NAME, description=cloudflare_tools.PURGE_CACHE_TOOL_DESCRIPTION, input_schema=cloudflare_tools.PURGE_CACHE_TOOL_INPUT_SCHEMA, handler=cloudflare_tools.purge_cache_handler, tags=["cloudflare", "cdn", "cache"]))
+    registry.register(ToolEntry(name=cloudflare_tools.LIST_WAF_TOOL_NAME, description=cloudflare_tools.LIST_WAF_TOOL_DESCRIPTION, input_schema=cloudflare_tools.LIST_WAF_TOOL_INPUT_SCHEMA, handler=cloudflare_tools.list_waf_handler, tags=["cloudflare", "security", "waf"]))
+
+    # ── Ansible ────────────────────────────────────────────────────────────
+    registry.register(ToolEntry(name=ansible_tools.RUN_PLAYBOOK_TOOL_NAME, description=ansible_tools.RUN_PLAYBOOK_TOOL_DESCRIPTION, input_schema=ansible_tools.RUN_PLAYBOOK_TOOL_INPUT_SCHEMA, handler=ansible_tools.run_playbook_handler, tags=["ansible", "iac", "automation"], timeout_seconds=600))
+    registry.register(ToolEntry(name=ansible_tools.LIST_HOSTS_TOOL_NAME, description=ansible_tools.LIST_HOSTS_TOOL_DESCRIPTION, input_schema=ansible_tools.LIST_HOSTS_TOOL_INPUT_SCHEMA, handler=ansible_tools.list_hosts_handler, tags=["ansible", "inventory"]))
+    registry.register(ToolEntry(name=ansible_tools.PING_TOOL_NAME, description=ansible_tools.PING_TOOL_DESCRIPTION, input_schema=ansible_tools.PING_TOOL_INPUT_SCHEMA, handler=ansible_tools.ping_handler, tags=["ansible", "inventory"]))
+    registry.register(ToolEntry(name=ansible_tools.RUN_MODULE_TOOL_NAME, description=ansible_tools.RUN_MODULE_TOOL_DESCRIPTION, input_schema=ansible_tools.RUN_MODULE_TOOL_INPUT_SCHEMA, handler=ansible_tools.run_module_handler, tags=["ansible", "automation"], timeout_seconds=300))
+
+    # ── Security Scanning ──────────────────────────────────────────────────
+    registry.register(ToolEntry(name=scanner_tools.TRIVY_IMAGE_TOOL_NAME, description=scanner_tools.TRIVY_IMAGE_TOOL_DESCRIPTION, input_schema=scanner_tools.TRIVY_IMAGE_TOOL_INPUT_SCHEMA, handler=scanner_tools.trivy_image_handler, tags=["security", "trivy", "containers"], timeout_seconds=300))
+    registry.register(ToolEntry(name=scanner_tools.TRIVY_FS_TOOL_NAME, description=scanner_tools.TRIVY_FS_TOOL_DESCRIPTION, input_schema=scanner_tools.TRIVY_FS_TOOL_INPUT_SCHEMA, handler=scanner_tools.trivy_fs_handler, tags=["security", "trivy"], timeout_seconds=300))
+    registry.register(ToolEntry(name=scanner_tools.TFSEC_TOOL_NAME, description=scanner_tools.TFSEC_TOOL_DESCRIPTION, input_schema=scanner_tools.TFSEC_TOOL_INPUT_SCHEMA, handler=scanner_tools.tfsec_handler, tags=["security", "tfsec", "terraform"]))
+
+    # ── GCP Secret Manager ─────────────────────────────────────────────────
+    registry.register(ToolEntry(name=gcp_sm_tools.LIST_SECRETS_TOOL_NAME, description=gcp_sm_tools.LIST_SECRETS_TOOL_DESCRIPTION, input_schema=gcp_sm_tools.LIST_SECRETS_TOOL_INPUT_SCHEMA, handler=gcp_sm_tools.list_secrets_handler, tags=["gcp", "secrets", "security"]))
+    registry.register(ToolEntry(name=gcp_sm_tools.GET_SECRET_TOOL_NAME, description=gcp_sm_tools.GET_SECRET_TOOL_DESCRIPTION, input_schema=gcp_sm_tools.GET_SECRET_TOOL_INPUT_SCHEMA, handler=gcp_sm_tools.get_secret_handler, tags=["gcp", "secrets", "security"]))
+    registry.register(ToolEntry(name=gcp_sm_tools.CREATE_SECRET_TOOL_NAME, description=gcp_sm_tools.CREATE_SECRET_TOOL_DESCRIPTION, input_schema=gcp_sm_tools.CREATE_SECRET_TOOL_INPUT_SCHEMA, handler=gcp_sm_tools.create_secret_handler, tags=["gcp", "secrets", "security"]))
+
+    # ── Multi-cloud FinOps ─────────────────────────────────────────────────
+    registry.register(ToolEntry(name=finops_tools.AZURE_COST_TOOL_NAME, description=finops_tools.AZURE_COST_TOOL_DESCRIPTION, input_schema=finops_tools.AZURE_COST_TOOL_INPUT_SCHEMA, handler=finops_tools.azure_cost_handler, tags=["finops", "azure", "cost"]))
+    registry.register(ToolEntry(name=finops_tools.GCP_BILLING_TOOL_NAME, description=finops_tools.GCP_BILLING_TOOL_DESCRIPTION, input_schema=finops_tools.GCP_BILLING_TOOL_INPUT_SCHEMA, handler=finops_tools.gcp_billing_handler, tags=["finops", "gcp", "cost"]))
+    registry.register(ToolEntry(name=finops_tools.INFRACOST_TOOL_NAME, description=finops_tools.INFRACOST_TOOL_DESCRIPTION, input_schema=finops_tools.INFRACOST_TOOL_INPUT_SCHEMA, handler=finops_tools.infracost_handler, tags=["finops", "terraform", "cost"]))
 
     log.info("registry_built", total_tools=len(registry))
     return registry
