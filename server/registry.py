@@ -130,7 +130,7 @@ def build_registry() -> ToolRegistry:
     from tools.aws import (
         ec2, s3, lambda_tools, rds, ec2_lifecycle, s3_objects, cloudwatch,
         secrets, networking, iam, rds_crud, ecs, cost, ecr, alb,
-        sqs, sns, dynamodb,
+        sqs, sns, dynamodb, idle_resources, cost_anomaly,
     )
     from tools.kubernetes import (
         deploy, get_pods, get_logs, get_events, scale, rollout_restart,
@@ -534,6 +534,8 @@ def build_registry() -> ToolRegistry:
     # AWS Cost Explorer
     registry.register(ToolEntry(name=cost.COST_BY_SERVICE_TOOL_NAME, description=cost.COST_BY_SERVICE_TOOL_DESCRIPTION, input_schema=cost.COST_BY_SERVICE_TOOL_INPUT_SCHEMA, handler=cost.cost_by_service_handler, tags=["aws", "cost", "finops"]))
     registry.register(ToolEntry(name=cost.MONTHLY_TOTAL_TOOL_NAME, description=cost.MONTHLY_TOTAL_TOOL_DESCRIPTION, input_schema=cost.MONTHLY_TOTAL_TOOL_INPUT_SCHEMA, handler=cost.monthly_total_handler, tags=["aws", "cost", "finops"]))
+    registry.register(ToolEntry(name=idle_resources.TOOL_NAME, description=idle_resources.TOOL_DESCRIPTION, input_schema=idle_resources.TOOL_INPUT_SCHEMA, handler=idle_resources.handler, tags=["aws", "finops", "cost", "ec2", "rds", "ebs"], timeout_seconds=120))
+    registry.register(ToolEntry(name=cost_anomaly.TOOL_NAME, description=cost_anomaly.TOOL_DESCRIPTION, input_schema=cost_anomaly.TOOL_INPUT_SCHEMA, handler=cost_anomaly.handler, tags=["aws", "cost", "finops", "anomaly"]))
     # AWS ECR
     registry.register(ToolEntry(name=ecr.LIST_REPOS_TOOL_NAME, description=ecr.LIST_REPOS_TOOL_DESCRIPTION, input_schema=ecr.LIST_REPOS_TOOL_INPUT_SCHEMA, handler=ecr.list_repos_handler, tags=["aws", "ecr", "containers"]))
     registry.register(ToolEntry(name=ecr.LIST_IMAGES_TOOL_NAME, description=ecr.LIST_IMAGES_TOOL_DESCRIPTION, input_schema=ecr.LIST_IMAGES_TOOL_INPUT_SCHEMA, handler=ecr.list_images_handler, tags=["aws", "ecr", "containers"]))
